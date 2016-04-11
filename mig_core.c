@@ -1,32 +1,39 @@
 #include "mig_core.h"
 
-struct mig_loop_ctx *mig_loop_create(size_t maxfds)
+const struct mig_ent MIG_ENT_EMPTY = {
+    NULL,
+    NULL,
+    NULL,
+    -1,
+};
+
+struct mig_loop *mig_loop_create(size_t maxfds)
 {
     size_t i;
-    struct mig_loop_ctx *loop = NULL;
-    loop = malloc(sizeof(struct mig_loop_ctx));
+    struct mig_loop *loop = NULL;
+    loop = malloc(sizeof(struct mig_loop));
     loop->entlen = maxfds;
     loop->entfds = calloc(maxfds, sizeof(struct pollfd));
-    loop->entarr = calloc(maxfds, sizeof(struct mig_ent_ctx));
+    loop->entarr = calloc(maxfds, sizeof(struct mig_ent));
     mig_zstk_init(loop->freestk, maxfds);
-    for(i = maxfds - 1; i >= 0; i--)
+    for(i = maxfds; i > 0; i--)
     {
         loop->entfds[i].fd = -1;
-        mig_zstk_push(loop->freestk, i);
+        mig_zstk_push(loop->freestk, i - 1);
     }
     return loop;
 }
 
-void mig_loop_destroy(struct mig_loop_ctx *loop)
+void mig_loop_destroy(struct mig_loop *loop)
 {
     size_t i;
-    struct mig_ent_ctx *entctxp;
+    struct mig_ent *entctxp;
     for(i = 0; i < loop->entlen; i++)
     {
         entctxp = loop->entarr + i;
         if(entctxp->free)
         {
-            entctxp->free(loop, entctxp, i);
+            entctxp->free(loop, i);
         }
     }
 
@@ -36,28 +43,34 @@ void mig_loop_destroy(struct mig_loop_ctx *loop)
     free(loop);
 }
 
-size_t mig_loop_register(struct mig_loop_ctx *loop, int fd, struct mig_ent_ctx initctx)
+
+size_t mig_loop_register(struct mig_loop *loop, int fd, mig_callback callfp, mig_callback freefp, enum mig_cond cond, void *dptr)
 {
-    size_t arridx = -1;
-    if(mig_zstk_pop(loop->freestk, &arridx))
+    size_t idx = -1;
+    if(mig_zstk_pop(loop->freestk, &idx))
     {
-        loop->entarr[arridx] = initctx;
-        loop->entfds[arridx].fd = initctx.fd;
-        loop->entfds[arridx].events = initctx.cond;
+        loop->entarr[idx].fd = fd;
+        loop->entarr[idx].call = callfp;
+        loop->entarr[idx].free = freefp;
+        loop->entarr[idx].data = dptr;
+        loop->entfds[idx].fd = fd;
+        loop->entfds[idx].events = cond;
+        loop->entfds[idx].revents = 0;
     }
-    return arridx;
+    return idx;
 }
 
-void mig_loop_unregister(struct mig_loop_ctx *loop, size_t idx)
+
+void mig_loop_unregister(struct mig_loop *loop, size_t idx)
 {
-    struct mig_ent_ctx *entctxp = loop->entarr + idx;
+    struct mig_ent *entctxp = loop->entarr + idx;
     if(entctxp->fd != -1)
     {
         if(entctxp->free)
         {
-            entctxp->free(loop, entctxp, idx);
+            entctxp->free(loop, idx);
         }
-        *entctxp = empty_ctx;
+        *entctxp = MIG_ENT_EMPTY; 
         loop->entfds[idx].fd = -1;
         loop->entfds[idx].events = 0;
         loop->entfds[idx].revents = 0;
@@ -65,23 +78,21 @@ void mig_loop_unregister(struct mig_loop_ctx *loop, size_t idx)
     }
 }
 
-noreturn void mig_loop_exec(struct mig_loop_ctx *loop)
+
+void mig_loop_exec(struct mig_loop *loop)
 {
     int hfds, rfds;
     size_t idx;
     struct pollfd *curfdp;
-    struct mig_ent_ctx *entctxp;
     while(1)
     {
         rfds = poll(loop->entfds, loop->entlen, -1);
         for(hfds = 0, idx = 0; idx < loop->entlen && hfds < rfds; idx++)
         {
-            curfdp = fds + idx;
-            if(curfdp->revents == 0) continue;
-            entctxp = loop->entarr + curfdp->fd;
-            if(entctxp->cond | curfdp->revents > 0)
+            curfdp = loop->entfds + idx;
+            if((curfdp->events | curfdp->revents) > 0)
             {
-                entctxp->call(loop, entctxp, idx);
+                loop->entarr[idx].call(loop, idx);
             }
             hfds++;
         }

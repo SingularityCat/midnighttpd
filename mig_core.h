@@ -2,6 +2,7 @@
 #define MIG_CORE
 
 #include <stdlib.h>
+#include <stdbool.h>
 #include <poll.h>
 
 /* size_t stack */
@@ -16,46 +17,90 @@ struct mig_zstk {
 #define mig_zstk_pop(stk, v_ptr) (stk.top > 0 ? (*v_ptr = stk.base[--stk.top]), true : false)
 #define mig_zstk_free(stk) (free(stk.base))
 
-enum mig_ent_cond;
-struct mig_loop_ctx;
-struct mig_ent_ctx;
-
-typedef void (*mig_ent_callback)(struct mig_loop_ctx *, struct mig_ent_ctx *, size_t);
-
-enum mig_ent_cond {
-    MIG_ENT_READ  = POLLIN,
-    MIG_ENT_WRITE = POLLOUT
+enum mig_cond {
+    MIG_COND_READ  = POLLIN,
+    MIG_COND_WRITE = POLLOUT,
+    MIG_COND_ERR = POLLERR
 };
 
-struct mig_loop_ctx {
+struct mig_loop;
+struct mig_ent;
+
+typedef void (*mig_callback)(struct mig_loop *loop, size_t idx);
+
+struct mig_loop {
     struct pollfd *entfds;
-    struct mig_ent_ctx *entarr;
+    struct mig_ent *entarr;
     struct mig_zstk freestk;
     size_t entlen;
-    int fdoffset;
 };
 
-struct mig_ent_ctx {
-    mig_ent_callback call;
-    mig_ent_callback free;
+struct mig_ent {
+    mig_callback call;
+    mig_callback free;
     void *data;
     int fd;
-    enum mig_ent_cond cond;
-} empty_ctx = {
-    NULL,
-    NULL,
-    NULL,
-    -1,
-    0
 };
 
-struct mig_loop_ctx *mig_loop_create(size_t maxfds);
-void mig_loop_destroy(struct mig_loop_ctx *loop);
+extern const struct mig_ent MIG_ENT_EMPTY;
 
-size_t mig_loop_register(struct mig_loop_ctx *loop, int fd, struct mig_ent_ctx initctx);
-void mig_loop_unregister(struct mig_loop_ctx *loop, int fd);
+struct mig_loop *mig_loop_create(size_t maxfds);
+void mig_loop_destroy(struct mig_loop *loop);
 
-noreturn void mig_loop_exec(struct mig_loop_ctx *loop);
+size_t mig_loop_register(struct mig_loop *loop, int fd, mig_callback callfp, mig_callback freefp, enum mig_cond cond, void *dptr);
+void mig_loop_unregister(struct mig_loop *loop, size_t idx);
+
+void mig_loop_exec(struct mig_loop *loop);
+
+
+inline void mig_loop_disable(struct mig_loop *loop, size_t idx)
+{
+    loop->entfds[idx].fd = -1;
+}
+
+inline void mig_loop_enable(struct mig_loop *loop, size_t idx)
+{
+    loop->entfds[idx].fd = loop->entarr[idx].fd;
+}
+
+inline void mig_loop_setcond(struct mig_loop *loop, size_t idx, enum mig_cond cond)
+{
+    loop->entfds[idx].events = cond;
+}
+
+inline enum mig_cond mig_loop_getcond(struct mig_loop *loop, size_t idx)
+{
+    return loop->entfds[idx].events;
+}
+
+inline enum mig_cond mig_loop_getactv(struct mig_loop *loop, size_t idx)
+{
+    return loop->entfds[idx].revents;
+}
+
+inline int mig_loop_getfd(struct mig_loop *loop, size_t idx)
+{
+    return loop->entarr[idx].fd;
+}
+
+inline void mig_loop_setfd(struct mig_loop *loop, size_t idx, int fd)
+{
+    loop->entarr[idx].fd = fd;
+    if(!loop->entfds[idx].fd > 0)
+    {
+        loop->entfds[idx].fd = fd;
+    }
+}
+
+inline void mig_loop_setcall(struct mig_loop *loop, size_t idx, mig_callback fp)
+{
+    loop->entarr[idx].call = fp;
+}
+
+inline void mig_loop_setfree(struct mig_loop *loop, size_t idx, mig_callback fp)
+{
+    loop->entarr[idx].free = fp;
+}
 
 #endif
 
