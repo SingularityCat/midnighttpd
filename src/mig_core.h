@@ -42,7 +42,6 @@ struct mig_ent {
     int fd;
 };
 
-extern const struct mig_ent MIG_ENT_EMPTY;
 
 struct mig_loop *mig_loop_create(size_t maxfds);
 void mig_loop_destroy(struct mig_loop *loop);
@@ -53,54 +52,15 @@ void mig_loop_unregister(struct mig_loop *loop, size_t idx);
 void mig_loop_exec(struct mig_loop *loop);
 
 
-inline void mig_loop_disable(struct mig_loop *loop, size_t idx)
-{
-    loop->entfds[idx].fd = -1;
-}
-
-inline void mig_loop_enable(struct mig_loop *loop, size_t idx)
-{
-    loop->entfds[idx].fd = loop->entarr[idx].fd;
-}
-
-inline void mig_loop_setcond(struct mig_loop *loop, size_t idx, enum mig_cond cond)
-{
-    loop->entfds[idx].events = cond;
-}
-
-inline enum mig_cond mig_loop_getcond(struct mig_loop *loop, size_t idx)
-{
-    return loop->entfds[idx].events;
-}
-
-inline enum mig_cond mig_loop_getactv(struct mig_loop *loop, size_t idx)
-{
-    return loop->entfds[idx].revents;
-}
-
-inline int mig_loop_getfd(struct mig_loop *loop, size_t idx)
-{
-    return loop->entarr[idx].fd;
-}
-
-inline void mig_loop_setfd(struct mig_loop *loop, size_t idx, int fd)
-{
-    loop->entarr[idx].fd = fd;
-    if(!loop->entfds[idx].fd > 0)
-    {
-        loop->entfds[idx].fd = fd;
-    }
-}
-
-inline void mig_loop_setcall(struct mig_loop *loop, size_t idx, mig_callback fp)
-{
-    loop->entarr[idx].call = fp;
-}
-
-inline void mig_loop_setfree(struct mig_loop *loop, size_t idx, mig_callback fp)
-{
-    loop->entarr[idx].free = fp;
-}
+void mig_loop_disable(struct mig_loop *loop, size_t idx);
+void mig_loop_enable(struct mig_loop *loop, size_t idx);
+void mig_loop_setcond(struct mig_loop *loop, size_t idx, enum mig_cond cond);
+enum mig_cond mig_loop_getcond(struct mig_loop *loop, size_t idx);
+enum mig_cond mig_loop_getactv(struct mig_loop *loop, size_t idx);
+int mig_loop_getfd(struct mig_loop *loop, size_t idx);
+void mig_loop_setfd(struct mig_loop *loop, size_t idx, int fd);
+void mig_loop_setcall(struct mig_loop *loop, size_t idx, mig_callback fp);
+void mig_loop_setfree(struct mig_loop *loop, size_t idx, mig_callback fp);
 
 #endif
 

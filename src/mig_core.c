@@ -1,10 +1,10 @@
 #include "mig_core.h"
 
-const struct mig_ent MIG_ENT_EMPTY = {
+static const struct mig_ent MIG_ENT_EMPTY = {
     NULL,
     NULL,
     NULL,
-    -1,
+    -1
 };
 
 struct mig_loop *mig_loop_create(size_t maxfds)
@@ -90,11 +90,60 @@ void mig_loop_exec(struct mig_loop *loop)
         for(hfds = 0, idx = 0; idx < loop->entlen && hfds < rfds; idx++)
         {
             curfdp = loop->entfds + idx;
-            if((curfdp->events | curfdp->revents) > 0)
+            if((curfdp->events & curfdp->revents) > 0)
             {
+                hfds++;
                 loop->entarr[idx].call(loop, idx);
             }
-            hfds++;
         }
     }
+}
+
+extern inline void mig_loop_disable(struct mig_loop *loop, size_t idx)
+{
+    loop->entfds[idx].fd = -1;
+}
+
+extern inline void mig_loop_enable(struct mig_loop *loop, size_t idx)
+{
+    loop->entfds[idx].fd = loop->entarr[idx].fd;
+}
+
+extern inline void mig_loop_setcond(struct mig_loop *loop, size_t idx, enum mig_cond cond)
+{
+    loop->entfds[idx].events = cond;
+}
+
+extern inline enum mig_cond mig_loop_getcond(struct mig_loop *loop, size_t idx)
+{
+    return loop->entfds[idx].events;
+}
+
+extern inline enum mig_cond mig_loop_getactv(struct mig_loop *loop, size_t idx)
+{
+    return loop->entfds[idx].revents;
+}
+
+extern inline int mig_loop_getfd(struct mig_loop *loop, size_t idx)
+{
+    return loop->entarr[idx].fd;
+}
+
+extern inline void mig_loop_setfd(struct mig_loop *loop, size_t idx, int fd)
+{
+    loop->entarr[idx].fd = fd;
+    if(!loop->entfds[idx].fd > 0)
+    {
+        loop->entfds[idx].fd = fd;
+    }
+}
+
+extern inline void mig_loop_setcall(struct mig_loop *loop, size_t idx, mig_callback fp)
+{
+    loop->entarr[idx].call = fp;
+}
+
+extern inline void mig_loop_setfree(struct mig_loop *loop, size_t idx, mig_callback fp)
+{
+    loop->entarr[idx].free = fp;
 }
