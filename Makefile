@@ -16,5 +16,5 @@ build: test
 test: ${SOURCES} ${HEADERS} test.c
 	${CC} ${LDFLAGS} ${CFLAGS} -o test test.c ${SOURCES}
 
-tcpchat: ${SOURCES} ${HEADERS} tcpchat.c
-	${CC} ${LDFLAGS} ${CFLAGS} -o tcpchat tcpchat.c ${SOURCES}
+tchat: ${SOURCES} ${HEADERS} tchat.c
+	${CC} ${LDFLAGS} ${CFLAGS} -o tchat tchat.c ${SOURCES}
