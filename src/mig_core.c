@@ -138,6 +138,16 @@ extern inline void mig_loop_setfd(struct mig_loop *loop, size_t idx, int fd)
     }
 }
 
+extern inline void *mig_loop_getdata(struct mig_loop *loop, size_t idx)
+{
+    return loop->entarr[idx].data;
+}
+
+extern inline void mig_loop_setdata(struct mig_loop *loop, size_t idx, void *data)
+{
+    loop->entarr[idx].data = data;
+}
+
 extern inline void mig_loop_setcall(struct mig_loop *loop, size_t idx, mig_callback fp)
 {
     loop->entarr[idx].call = fp;

@@ -18,3 +18,6 @@ test: ${SOURCES} ${HEADERS} test.c
 
 tchat: ${SOURCES} ${HEADERS} tchat.c
 	${CC} ${LDFLAGS} ${CFLAGS} -o tchat tchat.c ${SOURCES}
+
+midnighttpd: ${SOURCES} ${HEADERS} midnighttpd.c
+	${CC} ${LDFLAGS} ${CFLAGS} -o midnighttpd midnighttpd.c ${SOURCES}

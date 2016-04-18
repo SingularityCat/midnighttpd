@@ -59,6 +59,8 @@ enum mig_cond mig_loop_getcond(struct mig_loop *loop, size_t idx);
 enum mig_cond mig_loop_getactv(struct mig_loop *loop, size_t idx);
 int mig_loop_getfd(struct mig_loop *loop, size_t idx);
 void mig_loop_setfd(struct mig_loop *loop, size_t idx, int fd);
+void *mig_loop_getdata(struct mig_loop *loop, size_t idx);
+void mig_loop_setdata(struct mig_loop *loop, size_t idx, void *data);
 void mig_loop_setcall(struct mig_loop *loop, size_t idx, mig_callback fp);
 void mig_loop_setfree(struct mig_loop *loop, size_t idx, mig_callback fp);
 
