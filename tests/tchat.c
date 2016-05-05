@@ -88,7 +88,7 @@ int main(int argc, char **argv)
 
     addr.sin_family = AF_INET;
     addr.sin_port = htons(31337);
-    bind(servsock, &addr, sizeof(addr));
+    bind(servsock, (struct sockaddr *) &addr, sizeof(addr));
     listen(servsock, MAX_CONNS + 1);
 
     struct mig_loop *lp = mig_loop_create(MAX_CONNS + 1);
