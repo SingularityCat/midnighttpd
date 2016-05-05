@@ -16,10 +16,10 @@
 
 enum mhttp_range_spec
 {
-    MHTTP_RANGE_SPEC_NONE = 0x0,
-    MHTTP_RANGE_SPEC_LOW,
-    MHTTP_RANGE_SPEC_HIGH,
-    MHTTP_RANGE_SPEC_BOTH
+    MHTTP_RANGE_SPEC_NONE = 0x00,
+    MHTTP_RANGE_SPEC_LOW =  0x01,
+    MHTTP_RANGE_SPEC_HIGH = 0x10,
+    MHTTP_RANGE_SPEC_BOTH = 0x11
 };
 
 
@@ -43,7 +43,6 @@ struct mhttp_req
     char buf[HDRBUF_MAX];
     size_t buflen;
     size_t bufend;
-    size_t bufidx;
     enum mhttp_method method;
     const char *uri;
     struct {
@@ -97,7 +96,6 @@ void mhttp_req_free(struct mig_loop *lp, size_t idx)
 void mhttp_req_resetctx(struct mhttp_req *rctx)
 {
     rctx->bufend = 0;
-    rctx->bufidx = 0;
     rctx->range.low = 0;
     rctx->range.high = -1;
     rctx->srcentidx = -1;
@@ -120,6 +118,7 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
     int fd = mig_loop_getfd(lp, idx);
     char *chkptr;
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
+    size_t prevend = rctx->bufend;
 
     if(rctx->bufend >= rctx->buflen)
     {
@@ -143,9 +142,13 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
         mig_loop_unregister(lp, idx);
     }
 
-    chkptr = memmem(rctx->buf + rctx->bufidx, recvd, "\r\n\r\n", 4);
+    chkptr = memmem(rctx->buf + prevend, recvd, "\r\n\r\n", 4);
     if(chkptr != NULL)
     {
+        printf("[%zu] Headers complete.\n", idx);
+        /* Make a null terminated string */
+        *chkptr = 0;
+        rctx->bufend = chkptr - rctx->buf;
         /* switch to intr */
         mig_loop_setcall(lp, idx, mhttp_req_intr);
         mig_loop_setcond(lp, idx, MIG_COND_WRITE);
@@ -157,7 +160,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     int fd = mig_loop_getfd(lp, idx);
     char *chkptr;
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
-    size_t sent;
+    size_t bufidx, sent;
     char hdrbuf[HDRBUF_MAX];
     size_t hdrlen = 0;
 
@@ -197,12 +200,25 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
         case MHTTP_METHOD_OPTIONS:
             mig_loop_setcall(lp, idx, mhttp_req_options);
             break;
+        default:
+            break;
     }
 
-    rctx->bufidx = 0;
-    chkptr = memmem(rctx->buf + rctx->bufidx, rctx->bufend - rctx->bufidx, "\r\n", 2) + 2;
-    while(chkptr != NULL && *chkptr)
+    /* Extract and terminate URI part. TODO: URL decoding */
+    rctx->uri = strchr(rctx->buf, ' ') + 1;
+    chkptr = strchr(rctx->uri, ' ');
+    if(chkptr == NULL && (chkptr - rctx->buf) >= rctx->bufend)
     {
+        goto malformed_err;
+    }
+    *chkptr = 0;
+    bufidx = (chkptr + 1) - rctx->buf;
+
+    chkptr = strstr(rctx->buf + bufidx, "\r\n");
+    while(chkptr != NULL)
+    {
+        chkptr += 2; /* Skip crlf */
+        printf("[%zu] buflen %zu, bufend %zu, bufidx %zu, chkptr %zu\n", idx, rctx->buflen, rctx->bufend, bufidx, chkptr - rctx->buf);
         if(strncmp("Connection:", chkptr, 11) == 0)
         {
             chkptr += 11;
@@ -215,29 +231,38 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
             while(*chkptr++ == ' '); /* Skip whitespace */
             if(strncmp("bytes=", chkptr, 6))
             {
+                rctx->range.spec = MHTTP_RANGE_SPEC_NONE;
                 rctx->range.low = 0;
                 /* Extract lower number, if applicable. */
-                while(isdigit(*chkptr))
+                if(isdigit(*chkptr))
                 {
-                    rctx->range.low *= 10;
-                    rctx->range.low += *chkptr - 48;
-                    chkptr++;
+                    rctx->range.spec |= MHTTP_RANGE_SPEC_LOW;
+                    while(isdigit(*chkptr))
+                    {
+                        rctx->range.low *= 10;
+                        rctx->range.low += *chkptr - 48;
+                        chkptr++;
+                    }
                 }
                 if(*chkptr != '-')
                 {
                     /* Malformed header? */
                     goto malformed_err;
                 }
-                while(isdigit(*chkptr))
+                if(isdigit(*chkptr))
                 {
-                    rctx->range.high *= 10;
-                    rctx->range.high += *chkptr - 48;
-                    chkptr++;
+                    rctx->range.spec |= MHTTP_RANGE_SPEC_HIGH;
+                    while(isdigit(*chkptr))
+                    {
+                        rctx->range.high *= 10;
+                        rctx->range.high += *chkptr - 48;
+                        chkptr++;
+                    }
                 }
             }
         }
-        rctx->bufidx = (chkptr - rctx->buf);
-        chkptr = memmem(rctx->buf + rctx->bufidx, rctx->bufend - rctx->bufidx, "\r\n", 2) + 2;
+        bufidx = (chkptr - rctx->buf);
+        chkptr = strstr(rctx->buf + bufidx, "\r\n");
     }
 
     return;
