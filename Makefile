@@ -5,9 +5,13 @@ CFLAGS:=${CFLAGS} -I${SRCDIR} -g
 CORE_SOURCES=${SRCDIR}/mig_core.c
 CORE_HEADERS=${SRCDIR}/mig_core.h
 
-MHTTP_SOURCES=
+MHTTP_SOURCES=\
+${SRCDIR}/mhttp_util.c\
+${SRCDIR}/mhttp_range.c
 MHTTP_HEADERS=\
-${SRCDIR}/mhttp_method.h
+${SRCDIR}/mhttp_method.h\
+${SRCDIR}/mhttp_util.h\
+${SRCDIR}/mhttp_range.h
 
 all: build
 

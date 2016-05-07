@@ -10,18 +10,11 @@
 #include <netinet/in.h>
 
 #include "mig_core.h"
+#include "mhttp_util.h"
 #include "mhttp_method.h"
+#include "mhttp_range.h"
 
 #define MAX_CONNS 5
-
-enum mhttp_range_spec
-{
-    MHTTP_RANGE_SPEC_NONE = 0x00,
-    MHTTP_RANGE_SPEC_LOW =  0x01,
-    MHTTP_RANGE_SPEC_HIGH = 0x10,
-    MHTTP_RANGE_SPEC_BOTH = 0x11
-};
-
 
 #define http200 "200 OK"
 #define http204 "204 No content"
@@ -45,11 +38,7 @@ struct mhttp_req
     size_t bufend;
     enum mhttp_method method;
     const char *uri;
-    struct {
-        size_t low;
-        size_t high;
-        enum mhttp_range_spec spec;
-    } range;
+    struct mhttp_range range;
     bool eos;
     size_t srcentidx;
 };
@@ -228,38 +217,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
         else if(strncmp("Range:", chkptr, 6) == 0)
         {
             chkptr += 6;
-            while(*chkptr++ == ' '); /* Skip whitespace */
-            if(strncmp("bytes=", chkptr, 6))
-            {
-                rctx->range.spec = MHTTP_RANGE_SPEC_NONE;
-                rctx->range.low = 0;
-                /* Extract lower number, if applicable. */
-                if(isdigit(*chkptr))
-                {
-                    rctx->range.spec |= MHTTP_RANGE_SPEC_LOW;
-                    while(isdigit(*chkptr))
-                    {
-                        rctx->range.low *= 10;
-                        rctx->range.low += *chkptr - 48;
-                        chkptr++;
-                    }
-                }
-                if(*chkptr != '-')
-                {
-                    /* Malformed header? */
-                    goto malformed_err;
-                }
-                if(isdigit(*chkptr))
-                {
-                    rctx->range.spec |= MHTTP_RANGE_SPEC_HIGH;
-                    while(isdigit(*chkptr))
-                    {
-                        rctx->range.high *= 10;
-                        rctx->range.high += *chkptr - 48;
-                        chkptr++;
-                    }
-                }
-            }
+            if(mhttp_parse_range(chkptr, &rctx->range)) { goto malformed_err; }
         }
         bufidx = (chkptr - rctx->buf);
         chkptr = strstr(rctx->buf + bufidx, "\r\n");
