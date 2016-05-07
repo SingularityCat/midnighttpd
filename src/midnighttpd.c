@@ -213,8 +213,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     {
         case MHTTP_METHOD_GET:
         case MHTTP_METHOD_HEAD:
-            rctx->srcfd = srcfd = open(rctx->uri, 0);
-            if(stat(rctx->uri, &srcstat))
+            if(stat(rctx->uri+1, &srcstat))
             {
                 printf("[%zu] stat error: %s\n", idx, strerror(errno));
                 if(errno == ENAMETOOLONG) { mhttp_send_error(fd, hdrbuf, BUF_LEN, http414); }
@@ -243,6 +242,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
                 0);
             if(rctx->method == MHTTP_METHOD_GET)
             {
+                rctx->srcfd = srcfd = open(rctx->uri+1, 0);
                 /* Uses req context buffer - req->uri is now invalid. */
                 rctx->bufend = 0;
                 mig_loop_setcall(lp, idx, mhttp_req_send);
@@ -317,6 +317,7 @@ void mhttp_req_send(struct mig_loop *lp, size_t idx)
     {
         if(rctx->srclen == 0)
         {
+            close(rctx->srcfd);
             mhttp_req_resetctx(rctx);
             mig_loop_setcall(lp, idx, mhttp_req_recv);
             mig_loop_setcond(lp, idx, MIG_COND_READ);
