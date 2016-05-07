@@ -6,6 +6,7 @@
 
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 
@@ -40,7 +41,8 @@ struct mhttp_req
     const char *uri;
     struct mhttp_range range;
     bool eos;
-    size_t srcentidx;
+    int srcfd;
+    size_t srclen;
 };
 
 void mhttp_req_init(struct mig_loop *lp, size_t idx);
@@ -50,6 +52,13 @@ void mhttp_req_free(struct mig_loop *lp, size_t idx);
 void mhttp_req_get(struct mig_loop *lp, size_t idx);
 void mhttp_req_head(struct mig_loop *lp, size_t idx);
 void mhttp_req_options(struct mig_loop *lp, size_t idx);
+
+#define mhttp_send_error(fd, buf, buflen, error) \
+    send(fd, buf, snprintf(buf, buflen,\
+        "HTTP/1.1 %s\r\n"\
+        "Content-Length: 0\r\n"\
+        "\r\n",\
+        error), 0)
 
 void mhttp_accept(struct mig_loop *lp, size_t idx)
 {
@@ -74,9 +83,10 @@ void mhttp_accept(struct mig_loop *lp, size_t idx)
 
 void mhttp_req_free(struct mig_loop *lp, size_t idx)
 {
-    void *ctx = mig_loop_getdata(lp, idx);
+    struct mhttp_req *ctx = mig_loop_getdata(lp, idx);
     if(ctx != NULL)
     {
+        if(ctx->srcfd != -1) { close(ctx->srcfd); }
         free(ctx);
     }
     close(mig_loop_getfd(lp, idx));
@@ -87,7 +97,9 @@ void mhttp_req_resetctx(struct mhttp_req *rctx)
     rctx->bufend = 0;
     rctx->range.low = 0;
     rctx->range.high = -1;
-    rctx->srcentidx = -1;
+    rctx->range.spec = MHTTP_RANGE_SPEC_NONE;
+    rctx->srcfd = -1;
+    rctx->srclen = 0;
 }
 
 void mhttp_req_init(struct mig_loop *lp, size_t idx)
@@ -146,54 +158,30 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
 
 void mhttp_req_intr(struct mig_loop *lp, size_t idx)
 {
-    int fd = mig_loop_getfd(lp, idx);
+    int srcfd, fd = mig_loop_getfd(lp, idx);
+    int ret;
     char *chkptr;
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
     size_t bufidx, sent;
     char hdrbuf[HDRBUF_MAX];
-    size_t hdrlen = 0;
+
+    struct stat srcstat;
 
     /* Analyse client headers */
     rctx->method = mhttp_interpret_method(rctx->buf);
     if (rctx->method == MHTTP_METHOD_NONE)
     {
-        hdrlen = snprintf(hdrbuf, HDRBUF_MAX,
-            "HTTP/1.1 %s\r\n"
-            "Content-Length: 0\r\n"
-            "\r\n",
-            http501);
-        send(fd, hdrbuf, hdrlen, 0);
+        mhttp_send_error(fd, hdrbuf, HDRBUF_MAX, http501);
         mig_loop_unregister(lp, idx);
         return;
     }
     else if (rctx->method & MHTTP_METHOD_UNSUPPORTED)
     {
-        hdrlen = snprintf(hdrbuf, HDRBUF_MAX,
-            "HTTP/1.1 %s\r\n"
-            "Content-Length: 0\r\n"
-            "\r\n",
-            http405);
-        send(fd, hdrbuf, hdrlen, 0);
+        mhttp_send_error(fd, hdrbuf, HDRBUF_MAX, http405);
         mig_loop_unregister(lp, idx);
         return;
     }
 
-    switch(rctx->method)
-    {
-        case MHTTP_METHOD_GET:
-            mig_loop_setcall(lp, idx, mhttp_req_get);
-            break;
-        case MHTTP_METHOD_HEAD:
-            mig_loop_setcall(lp, idx, mhttp_req_head);
-            break;
-        case MHTTP_METHOD_OPTIONS:
-            mig_loop_setcall(lp, idx, mhttp_req_options);
-            break;
-        default:
-            break;
-    }
-
-    /* Extract and terminate URI part. TODO: URL decoding */
     rctx->uri = strchr(rctx->buf, ' ') + 1;
     chkptr = strchr(rctx->uri, ' ');
     if(chkptr == NULL && (chkptr - rctx->buf) >= rctx->bufend)
@@ -201,6 +189,9 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
         goto malformed_err;
     }
     *chkptr = 0;
+    mhttp_urldecode(rctx->uri, (char *) rctx->uri, chkptr - rctx->uri);
+    printf("[%zu] URI: %s\n", idx, rctx->uri);
+
     bufidx = (chkptr + 1) - rctx->buf;
 
     chkptr = strstr(rctx->buf + bufidx, "\r\n");
@@ -223,16 +214,38 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
         chkptr = strstr(rctx->buf + bufidx, "\r\n");
     }
 
+    switch(rctx->method)
+    {
+        case MHTTP_METHOD_GET:
+        case MHTTP_METHOD_HEAD:
+            rctx->srcfd = srcfd = open(rctx->uri, 0);
+            ret = stat(rctx->uri, &srcstat);
+            if(rctx->method == MHTTP_METHOD_GET)
+            {
+                mig_loop_setcall(lp, idx, mhttp_req_get);
+            }
+            else
+            {
+                mig_loop_setcall(lp, idx, mhttp_req_head);
+            }
+            break;
+        case MHTTP_METHOD_OPTIONS:
+            mig_loop_setcall(lp, idx, mhttp_req_options);
+            break;
+        default:
+            break;
+    }
+
     return;
 
     malformed_err:
-    hdrlen = snprintf(hdrbuf, HDRBUF_MAX,
-        "HTTP/1.1 %s\r\n"
-        "Content-Length: 0\r\n"
-        "\r\n",
-        http400);
-    send(fd, hdrbuf, hdrlen, 0);
+    mhttp_send_error(fd, hdrbuf, HDRBUF_MAX, http400);
     mig_loop_unregister(lp, idx);
+    return;
+
+    fnf_err:
+    mhttp_send_error(fd, hdrbuf, HDRBUF_MAX, http404);
+    return;
 }
 
 void mhttp_req_get(struct mig_loop *lp, size_t idx)
@@ -240,6 +253,7 @@ void mhttp_req_get(struct mig_loop *lp, size_t idx)
     int fd = mig_loop_getfd(lp, idx);
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
     size_t sent;
+
     if(!rctx->eos)
     {
         mhttp_req_resetctx(rctx);
