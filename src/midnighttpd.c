@@ -315,7 +315,7 @@ void mhttp_req_send(struct mig_loop *lp, size_t idx)
 
     sent = send(fd, rctx->buf + rctx->bufoff, rctx->bufend, 0);
     rctx->bufoff += sent;
-    rctx->bufend += sent;
+    rctx->bufend -= sent;
 
     if(!rctx->eos)
     {
