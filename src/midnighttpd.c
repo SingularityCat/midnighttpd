@@ -97,6 +97,7 @@ void mhttp_req_resetctx(struct mhttp_req *rctx)
     rctx->range.low = 0;
     rctx->range.high = -1;
     rctx->range.spec = MHTTP_RANGE_SPEC_NONE;
+    rctx->eos = false;
     rctx->srcfd = -1;
     rctx->srclen = 0;
 }
@@ -131,12 +132,20 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
     }
 
     size_t recvd = recv(fd, rctx->buf + rctx->bufend, rctx->buflen - rctx->bufend, 0);
+    if(recvd == -1)
+    {
+        printf("[%zu] recv error: %s\n", idx, strerror(errno));
+        mig_loop_unregister(lp, idx);
+        return;
+    }
+
     rctx->bufend += recvd;
     printf("[%zu] recv'd %zu bytes of data.\n", idx, recvd);
     if(recvd == 0)
     {
         printf("[%zu] Connection closed.\n", idx);
         mig_loop_unregister(lp, idx);
+        return;
     }
 
     /* As we can recv bytes individually, we must check up to the previous 3 bytes as well */
@@ -197,7 +206,6 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     while(chkptr != NULL)
     {
         chkptr += 2; /* Skip crlf */
-        printf("[%zu] buflen %zu, bufend %zu, bufidx %zu, chkptr %zu\n", idx, rctx->buflen, rctx->bufend, bufidx, chkptr - rctx->buf);
         if(strncmp("Connection:", chkptr, 11) == 0)
         {
             chkptr += 11;
