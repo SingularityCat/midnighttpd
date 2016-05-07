@@ -26,5 +26,5 @@ test: ${CORE_SOURCES} ${CORE_HEADERS} tests/test.c
 tchat: ${CORE_SOURCES} ${CORE_HEADERS} tests/tchat.c
 	${CC} ${LDFLAGS} ${CFLAGS} -o tchat tests/tchat.c ${CORE_SOURCES}
 
-midnighttpd: ${CORE_SOURCES} ${CORE_HEADERS} src/midnighttpd.c
+midnighttpd: ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} src/midnighttpd.c
 	${CC} ${LDFLAGS} ${CFLAGS} -o midnighttpd src/midnighttpd.c ${CORE_SOURCES} ${MHTTP_SOURCES}
