@@ -119,6 +119,7 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
     char *chkptr;
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
     size_t prevend = rctx->bufend;
+    size_t offset;
 
     if(rctx->bufend >= rctx->buflen)
     {
@@ -138,7 +139,10 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
         mig_loop_unregister(lp, idx);
     }
 
-    chkptr = memmem(rctx->buf + prevend, recvd, "\r\n\r\n", 4);
+    /* As we can recv bytes individually, we must check up to the previous 3 bytes as well */
+    offset = prevend < 3 ? prevend : 3;
+    chkptr = memmem(rctx->buf + prevend - offset, recvd + offset, "\r\n\r\n", 4);
+
     if(chkptr != NULL)
     {
         printf("[%zu] Headers complete.\n", idx);
