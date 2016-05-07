@@ -30,6 +30,13 @@
 #define http501 "501 Not Implemented"
 #define http503 "503 Service Unavailable"
 
+#define mhttp_send_error(fd, buf, buflen, error) \
+    send(fd, buf, snprintf(buf, buflen,\
+        "HTTP/1.1 %s\r\n"\
+        "Content-Length: 0\r\n"\
+        "\r\n",\
+        error), 0)
+
 #define HDRBUF_MAX 2048
 
 struct mhttp_req
@@ -53,13 +60,6 @@ void mhttp_req_get(struct mig_loop *lp, size_t idx);
 void mhttp_req_head(struct mig_loop *lp, size_t idx);
 void mhttp_req_options(struct mig_loop *lp, size_t idx);
 
-#define mhttp_send_error(fd, buf, buflen, error) \
-    send(fd, buf, snprintf(buf, buflen,\
-        "HTTP/1.1 %s\r\n"\
-        "Content-Length: 0\r\n"\
-        "\r\n",\
-        error), 0)
-
 void mhttp_accept(struct mig_loop *lp, size_t idx)
 {
     int sock = accept(mig_loop_getfd(lp, idx), NULL, NULL);
@@ -68,12 +68,7 @@ void mhttp_accept(struct mig_loop *lp, size_t idx)
     if(ni == (size_t) -1)
     {
         char hdrbuf[HDRBUF_MAX];
-        size_t hdrlen = snprintf(hdrbuf, HDRBUF_MAX,
-            "HTTP/1.1 %s\r\n"
-            "Content-Length: 0\r\n"
-            "\r\n",
-            http503);
-        send(sock, hdrbuf, hdrlen, 0);
+        mhttp_send_error(sock, hdrbuf, HDRBUF_MAX, http503);
         close(sock);
         printf("[%zu] Rejecting new connection (no space left).\n", idx);
         return;
@@ -125,11 +120,7 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
     {
         /* Header too big. This is fatal. */
         char hdrbuf[HDRBUF_MAX];
-        size_t hdrlen = snprintf(hdrbuf, HDRBUF_MAX,
-            "HTTP/1.1 %s\r\n"
-            "\r\n",
-            http431);
-        send(fd, hdrbuf, hdrlen, 0);
+        mhttp_send_error(fd, hdrbuf, HDRBUF_MAX, http431);
         mig_loop_unregister(lp, idx);
         return;
     }
