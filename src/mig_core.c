@@ -18,7 +18,7 @@ struct mig_loop *mig_loop_create(size_t maxfds)
     mig_zstk_init(loop->freestk, maxfds);
     for(i = maxfds; i > 0; i--)
     {
-        loop->entfds[i].fd = -1;
+        loop->entfds[i - 1].fd = -1;
         mig_zstk_push(loop->freestk, i - 1);
     }
     return loop;
