@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <errno.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -27,8 +28,10 @@
 #define http414 "414 Request-URI Too Long"
 #define http416 "416 Requested Range Not Satisfiable"
 #define http431 "431 Request Header Fields Too Large"
+#define http500 "Internal Server Error"
 #define http501 "501 Not Implemented"
 #define http503 "503 Service Unavailable"
+#define http508 "Loop Detected"
 
 #define mhttp_send_error(fd, buf, buflen, error) \
     send(fd, buf, snprintf(buf, buflen,\
@@ -37,13 +40,14 @@
         "\r\n",\
         error), 0)
 
-#define HDRBUF_MAX 2048
+#define BUF_LEN 2048
 
 struct mhttp_req
 {
-    char buf[HDRBUF_MAX];
+    char buf[BUF_LEN];
     size_t buflen;
     size_t bufend;
+    size_t bufoff; /* Used in req_send */
     enum mhttp_method method;
     const char *uri;
     struct mhttp_range range;
@@ -52,13 +56,12 @@ struct mhttp_req
     size_t srclen;
 };
 
+void mhttp_req_free(struct mig_loop *lp, size_t idx);
+void mhttp_req_resetctx(struct mhttp_req *rctx);
 void mhttp_req_init(struct mig_loop *lp, size_t idx);
 void mhttp_req_recv(struct mig_loop *lp, size_t idx);
 void mhttp_req_intr(struct mig_loop *lp, size_t idx);
-void mhttp_req_free(struct mig_loop *lp, size_t idx);
-void mhttp_req_get(struct mig_loop *lp, size_t idx);
-void mhttp_req_head(struct mig_loop *lp, size_t idx);
-void mhttp_req_options(struct mig_loop *lp, size_t idx);
+void mhttp_req_send(struct mig_loop *lp, size_t idx);
 
 void mhttp_accept(struct mig_loop *lp, size_t idx)
 {
@@ -67,8 +70,8 @@ void mhttp_accept(struct mig_loop *lp, size_t idx)
     size_t ni = mig_loop_register(lp, sock, mhttp_req_init, mhttp_req_free, MIG_COND_READ, NULL);
     if(ni == (size_t) -1)
     {
-        char hdrbuf[HDRBUF_MAX];
-        mhttp_send_error(sock, hdrbuf, HDRBUF_MAX, http503);
+        char hdrbuf[BUF_LEN];
+        mhttp_send_error(sock, hdrbuf, BUF_LEN, http503);
         close(sock);
         printf("[%zu] Rejecting new connection (no space left).\n", idx);
         return;
@@ -90,6 +93,7 @@ void mhttp_req_free(struct mig_loop *lp, size_t idx)
 void mhttp_req_resetctx(struct mhttp_req *rctx)
 {
     rctx->bufend = 0;
+    rctx->bufoff = 0;
     rctx->range.low = 0;
     rctx->range.high = -1;
     rctx->range.spec = MHTTP_RANGE_SPEC_NONE;
@@ -101,7 +105,7 @@ void mhttp_req_init(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
     struct mhttp_req *rctx = malloc(sizeof(*rctx));
-    rctx->buflen = HDRBUF_MAX;
+    rctx->buflen = BUF_LEN;
     mhttp_req_resetctx(rctx);
     mig_loop_setdata(lp, idx, rctx);
     mig_loop_setcall(lp, idx, mhttp_req_recv);
@@ -119,8 +123,8 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
     if(rctx->bufend >= rctx->buflen)
     {
         /* Header too big. This is fatal. */
-        char hdrbuf[HDRBUF_MAX];
-        mhttp_send_error(fd, hdrbuf, HDRBUF_MAX, http431);
+        char hdrbuf[BUF_LEN];
+        mhttp_send_error(fd, hdrbuf, BUF_LEN, http431);
         mig_loop_unregister(lp, idx);
         return;
     }
@@ -154,7 +158,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     char *chkptr;
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
     size_t bufidx, sent;
-    char hdrbuf[HDRBUF_MAX];
+    char hdrbuf[BUF_LEN];
 
     struct stat srcstat;
 
@@ -162,13 +166,13 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     rctx->method = mhttp_interpret_method(rctx->buf);
     if (rctx->method == MHTTP_METHOD_NONE)
     {
-        mhttp_send_error(fd, hdrbuf, HDRBUF_MAX, http501);
+        mhttp_send_error(fd, hdrbuf, BUF_LEN, http501);
         mig_loop_unregister(lp, idx);
         return;
     }
     else if (rctx->method & MHTTP_METHOD_UNSUPPORTED)
     {
-        mhttp_send_error(fd, hdrbuf, HDRBUF_MAX, http405);
+        mhttp_send_error(fd, hdrbuf, BUF_LEN, http405);
         mig_loop_unregister(lp, idx);
         return;
     }
@@ -180,7 +184,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
         goto malformed_err;
     }
     *chkptr = 0;
-    mhttp_urldecode(rctx->uri, (char *) rctx->uri, chkptr - rctx->uri);
+    mhttp_urldecode(rctx->uri, (char *) rctx->uri, chkptr+1 - rctx->uri);
     printf("[%zu] URI: %s\n", idx, rctx->uri);
 
     bufidx = (chkptr + 1) - rctx->buf;
@@ -210,90 +214,113 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
         case MHTTP_METHOD_GET:
         case MHTTP_METHOD_HEAD:
             rctx->srcfd = srcfd = open(rctx->uri, 0);
-            ret = stat(rctx->uri, &srcstat);
+            if(stat(rctx->uri, &srcstat))
+            {
+                printf("[%zu] stat error: %s\n", idx, strerror(errno));
+                if(errno == ENAMETOOLONG) { mhttp_send_error(fd, hdrbuf, BUF_LEN, http414); }
+                else if(errno == EACCES) { mhttp_send_error(fd, hdrbuf, BUF_LEN, http403); }
+                else if(errno == ENOENT) { mhttp_send_error(fd, hdrbuf, BUF_LEN, http404); }
+                else if(errno == ELOOP) { mhttp_send_error(fd, hdrbuf, BUF_LEN, http508); }
+                else { mhttp_send_error(fd, hdrbuf, BUF_LEN, http500); }
+                goto keepalive;
+            }
+
+            /* Check ranges */
+            /*if((rctx->range.spec | MHTTP_RANGE_SPEC_LOW) > 0)
+            {
+                if(srcstat.st_size < rctx->range.low)
+            }*/
+
+            rctx->srclen = srcstat.st_size;
+            send(fd, hdrbuf,
+                snprintf(
+                    hdrbuf, BUF_LEN,
+                    "HTTP/1.1 %s\r\n"
+                    "Content-Length: %zu\r\n"
+                    "\r\n",
+                    http200,
+                    rctx->srclen),
+                0);
             if(rctx->method == MHTTP_METHOD_GET)
             {
-                mig_loop_setcall(lp, idx, mhttp_req_get);
+                /* Uses req context buffer - req->uri is now invalid. */
+                rctx->bufend = 0;
+                mig_loop_setcall(lp, idx, mhttp_req_send);
             }
             else
             {
-                mig_loop_setcall(lp, idx, mhttp_req_head);
+                goto keepalive;
             }
             break;
         case MHTTP_METHOD_OPTIONS:
-            mig_loop_setcall(lp, idx, mhttp_req_options);
+            send(fd, hdrbuf,
+                snprintf(
+                    hdrbuf, BUF_LEN,
+                    "HTTP/1.1 %s\r\n"
+                    "Allow: %s\r\n"
+                    "\r\n",
+                    http204,
+                    allowed_methods),
+                0);
+            if(!rctx->eos)
+            {
+                goto keepalive;
+            }
+            else
+            {
+                mig_loop_unregister(lp, idx);
+            }
             break;
         default:
-            break;
+            goto malformed_err;
     }
 
     return;
 
     malformed_err:
-    mhttp_send_error(fd, hdrbuf, HDRBUF_MAX, http400);
+    mhttp_send_error(fd, hdrbuf, BUF_LEN, http400);
     mig_loop_unregister(lp, idx);
     return;
 
-    fnf_err:
-    mhttp_send_error(fd, hdrbuf, HDRBUF_MAX, http404);
+    keepalive:
+    mhttp_req_resetctx(rctx);
+    mig_loop_setcall(lp, idx, mhttp_req_recv);
+    mig_loop_setcond(lp, idx, MIG_COND_READ);
     return;
 }
 
-void mhttp_req_get(struct mig_loop *lp, size_t idx)
+void mhttp_req_send(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
-    size_t sent;
+    size_t chunklen, sent;
+    /* Check if buffer is empty */
+    if(rctx->bufend == 0)
+    {
+        chunklen = rctx->srclen < rctx->buflen ? rctx->srclen : rctx->buflen;
+        sent = read(rctx->srcfd, rctx->buf, chunklen); /* Sent here means amount read. */
+        rctx->srclen -= chunklen;
+        if(sent != chunklen)
+        {
+            /* Huh? Early end of file? Set the EOS flag to bail gracefully */
+            rctx->eos = true;
+        }
+        rctx->bufoff = 0;
+        rctx->bufend = sent;
+    }
+
+    sent = send(fd, rctx->buf + rctx->bufoff, rctx->bufend, 0);
+    rctx->bufoff += sent;
+    rctx->bufend += sent;
 
     if(!rctx->eos)
     {
-        mhttp_req_resetctx(rctx);
-        mig_loop_setcall(lp, idx, mhttp_req_recv);
-        mig_loop_setcond(lp, idx, MIG_COND_READ);
-    }
-    else
-    {
-        mig_loop_unregister(lp, idx);
-    }
-}
-
-void mhttp_req_head(struct mig_loop *lp, size_t idx)
-{
-    int fd = mig_loop_getfd(lp, idx);
-    struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
-    size_t sent;
-    if(!rctx->eos)
-    {
-        mhttp_req_resetctx(rctx);
-        mig_loop_setcall(lp, idx, mhttp_req_recv);
-        mig_loop_setcond(lp, idx, MIG_COND_READ);
-    }
-    else
-    {
-        mig_loop_unregister(lp, idx);
-    }
-}
-
-void mhttp_req_options(struct mig_loop *lp, size_t idx)
-{
-    int fd = mig_loop_getfd(lp, idx);
-    struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
-    char hdrbuf[HDRBUF_MAX];
-    size_t hdrlen = 0;
-
-    hdrlen = snprintf(hdrbuf, HDRBUF_MAX,
-        "HTTP/1.1 %s\r\n"
-        "Allow: %s\r\n"
-        "\r\n",
-        http204,
-        allowed_methods);
-    send(fd, hdrbuf, hdrlen, 0);
-    
-    if(!rctx->eos)
-    {
-        mhttp_req_resetctx(rctx);
-        mig_loop_setcall(lp, idx, mhttp_req_recv);
-        mig_loop_setcond(lp, idx, MIG_COND_READ);
+        if(rctx->srclen == 0)
+        {
+            mhttp_req_resetctx(rctx);
+            mig_loop_setcall(lp, idx, mhttp_req_recv);
+            mig_loop_setcond(lp, idx, MIG_COND_READ);
+        }
     }
     else
     {
