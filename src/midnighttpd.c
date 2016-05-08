@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <dirent.h>
 
 #include "mig_core.h"
 #include "mhttp_util.h"
@@ -61,6 +62,7 @@ struct mhttp_req
     size_t bufoff; /* Used in req_send */
     enum mhttp_method method;
     const char *uri;
+    const char *arg;
     struct mhttp_range range;
     bool eos;
     int srcfd;
@@ -73,6 +75,7 @@ void mhttp_req_init(struct mig_loop *lp, size_t idx);
 void mhttp_req_recv(struct mig_loop *lp, size_t idx);
 void mhttp_req_intr(struct mig_loop *lp, size_t idx);
 void mhttp_req_send(struct mig_loop *lp, size_t idx);
+void mhttp_send_dirindex(int fd, const char *dir);
 
 void mhttp_accept(struct mig_loop *lp, size_t idx)
 {
@@ -252,6 +255,21 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
                 goto keepalive;
             }
 
+            /* Test if we're a directory. */
+            if(S_ISDIR(srcstat.st_mode))
+            {
+                /* Should we do directory listing? */
+                if(1)
+                {
+                    mhttp_send_dirindex(fd, rctx->uri);
+                }
+                else
+                {
+                    mhttp_send_error(fd, http403);
+                }
+                goto keepalive;
+            }
+
             /* Range checking logic:
              * Invalid range -> ignored.
              * Lower bound higher then resource limit.
@@ -387,6 +405,47 @@ void mhttp_req_send(struct mig_loop *lp, size_t idx)
     {
         mig_loop_unregister(lp, idx);
     }
+}
+
+void mhttp_send_dirindex(int fd, const char *dir)
+{
+    const size_t buflen = 4096;
+    char buf[buflen];
+    size_t written;
+    DIR *dirp;
+    struct dirent *dent;
+
+    const char *preamble =
+        "<!DOCTYPE html5>"
+        "<head><title>%s</title></head>"
+        "<body><h1>Directroy listing for %s</h1>"
+            "<ul>";
+    const char *postamble =
+            "</ul>"
+        "<body>";
+
+    dirp = opendir(dir+1);
+    if(dirp == NULL) { goto dirlst_err; }
+    written = snprintf(buf, buflen, preamble, dir, dir);
+
+    while((dent = readdir(dirp)) != NULL)
+    {
+        written += snprintf(buf + written, buflen - written,
+            "<li><a href=\"%s/%s\">%s</a></li>", dir, dent->d_name, dent->d_name);
+    }
+
+    written += snprintf(buf + written, buflen - written, postamble);
+
+    dprintf(fd,
+        "HTTP/1.1 " http200 "\r\n"
+        SERVER_HEADER
+        "Content-Length: %zu\r\n"
+        "\r\n", written);
+    send(fd, buf, written, 0);
+    return;
+
+    dirlst_err:
+    mhttp_send_error(fd, http500);
 }
 
 int main(int argc, char **argv)
