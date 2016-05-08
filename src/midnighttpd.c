@@ -180,7 +180,6 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     char *chkptr;
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
     size_t bufidx, sent;
-    char buf[BUF_LEN];
 
     struct stat srcstat;
 
@@ -255,16 +254,13 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
             }
             if(rctx->range.low >= srcstat.st_size)
             {
-                send(fd, buf,
-                    snprintf(
-                        buf, BUF_LEN,
-                        "HTTP/1.1 " http416 "\r\n"
-                        SERVER_HEADER
-                        "Content-Length: 0\r\n"
-                        "Content-Range: */%zu\r\n"
-                        "\r\n",
-                        srcstat.st_size),
-                    0);
+                dprintf(fd,
+                    "HTTP/1.1 " http416 "\r\n"
+                    SERVER_HEADER
+                    "Content-Length: 0\r\n"
+                    "Content-Range: */%zu\r\n"
+                    "\r\n",
+                    srcstat.st_size);
                 goto keepalive;
             }
             if(rctx->range.high >= srcstat.st_size)
@@ -275,30 +271,24 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
             if(rctx->range.spec != MHTTP_RANGE_SPEC_NONE)
             {
                 rctx->srclen = rctx->range.high - rctx->range.low;
-                send(fd, buf,
-                    snprintf(
-                        buf, BUF_LEN,
-                        "HTTP/1.1 " http206 "\r\n"
-                        SERVER_HEADER
-                        "Content-Length: %zu\r\n"
-                        "Content-Range: bytes %zu-%zu/%zu\r\n"
-                        "\r\n",
-                        rctx->srclen,
-                        rctx->range.low, rctx->range.high, srcstat.st_size),
-                    0);
+                dprintf(fd,
+                    "HTTP/1.1 " http206 "\r\n"
+                    SERVER_HEADER
+                    "Content-Length: %zu\r\n"
+                    "Content-Range: bytes %zu-%zu/%zu\r\n"
+                    "\r\n",
+                    rctx->srclen,
+                    rctx->range.low, rctx->range.high, srcstat.st_size);
             }
             else
             {
                 rctx->srclen = srcstat.st_size;
-                send(fd, buf,
-                    snprintf(
-                        buf, BUF_LEN,
-                        "HTTP/1.1 " http200 "\r\n"
-                        SERVER_HEADER
-                        "Content-Length: %zu\r\n"
-                        "\r\n",
-                        srcstat.st_size),
-                    0);
+                dprintf(fd,
+                    "HTTP/1.1 " http200 "\r\n"
+                    SERVER_HEADER
+                    "Content-Length: %zu\r\n"
+                    "\r\n",
+                    srcstat.st_size);
             }
             if(rctx->method == MHTTP_METHOD_GET)
             {
@@ -317,15 +307,12 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
             }
             break;
         case MHTTP_METHOD_OPTIONS:
-            send(fd, buf,
-                snprintf(
-                    buf, BUF_LEN,
-                    "HTTP/1.1 %s\r\n"
-                    "Allow: %s\r\n"
-                    "\r\n",
-                    http204,
-                    allowed_methods),
-                0);
+            dprintf(fd,
+                "HTTP/1.1 %s\r\n"
+                "Allow: %s\r\n"
+                "\r\n",
+                http204,
+                allowed_methods);
             if(!rctx->eos)
             {
                 goto keepalive;
