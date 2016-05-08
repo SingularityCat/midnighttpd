@@ -55,7 +55,7 @@
 
 struct mhttp_req
 {
-    char buf[BUF_LEN];
+    char *buf;
     size_t buflen;
     size_t bufend;
     size_t bufoff; /* Used in req_send */
@@ -115,7 +115,8 @@ void mhttp_req_resetctx(struct mhttp_req *rctx)
 void mhttp_req_init(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
-    struct mhttp_req *rctx = malloc(sizeof(*rctx));
+    struct mhttp_req *rctx = malloc(sizeof(*rctx) + BUF_LEN);
+    rctx->buf = (char *) (rctx + 1);
     rctx->buflen = BUF_LEN;
     mhttp_req_resetctx(rctx);
     mig_loop_setdata(lp, idx, rctx);
