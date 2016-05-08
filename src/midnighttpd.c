@@ -193,7 +193,14 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     }
     else if (rctx->method & MHTTP_METHOD_UNSUPPORTED)
     {
-        mhttp_send_error(fd, http405);
+        dprintf(fd,
+            "HTTP/1.1 %s\r\n"
+            SERVER_HEADER
+            "Content-Length: 0\r\n"
+            "Allow: %s\r\n"
+            "\r\n",
+            http405,
+            allowed_methods);
         mig_loop_unregister(lp, idx);
         return;
     }
@@ -309,6 +316,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
         case MHTTP_METHOD_OPTIONS:
             dprintf(fd,
                 "HTTP/1.1 %s\r\n"
+                SERVER_HEADER
                 "Allow: %s\r\n"
                 "\r\n",
                 http204,
