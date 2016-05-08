@@ -2,24 +2,23 @@
 
 int mhttp_parse_range(const char *ranhdr, struct mhttp_range *range)
 {
-    while(*ranhdr++ == ' '); /* Skip whitespace */
-    if(strncmp("bytes=", ranhdr, 6))
+    while(*ranhdr == ' ') { ranhdr++; } /* Skip whitespace */
+    if(strncmp("bytes=", ranhdr, 6) == 0)
     {
+        ranhdr += 6;
         range->spec = MHTTP_RANGE_SPEC_NONE;
-        range->low = 0;
-        range->high = -1;
         /* Extract lower number, if applicable. */
         if(isdigit(*ranhdr))
         {
             range->spec |= MHTTP_RANGE_SPEC_LOW;
+            range->low = 0;
             while(isdigit(*ranhdr))
             {
                 range->low *= 10;
-                range->low += *ranhdr - 48;
-                ranhdr++;
+                range->low += *ranhdr++ - 48;
             }
         }
-        if(*ranhdr != '-')
+        if(*ranhdr++ != '-')
         {
             /* Malformed header? */
             goto ranpar_err;
@@ -27,11 +26,11 @@ int mhttp_parse_range(const char *ranhdr, struct mhttp_range *range)
         if(isdigit(*ranhdr))
         {
             range->spec |= MHTTP_RANGE_SPEC_HIGH;
+            range->high = 0;
             while(isdigit(*ranhdr))
             {
                 range->high *= 10;
-                range->high += *ranhdr - 48;
-                ranhdr++;
+                range->high += *ranhdr++ - 48;
             }
         }
         return 0;
