@@ -41,16 +41,15 @@
 #define http503 "503 Service Unavailable"
 #define http508 "508 Loop Detected"
 
-#define mhttp_error_resp(error) \
+#define mhttp_error_resp(error, ...) \
     ("HTTP/1.1 " error "\r\n"\
      SERVER_HEADER\
      "Content-Length: 0\r\n"\
+     __VA_ARGS__\
      "\r\n")
 
-#define mhttp_send_error(fd, error) \
-    send(fd, mhttp_error_resp(error), sizeof(mhttp_error_resp(error)), 0)
-
-
+#define mhttp_send_error(fd, error, ...) \
+    send(fd, mhttp_error_resp(error, __VA_ARGS__), sizeof(mhttp_error_resp(error, __VA_ARGS__)), 0)
 
 #define BUF_LEN 2048
 
@@ -136,7 +135,6 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
     if(rctx->bufend >= rctx->buflen)
     {
         /* Header too big. This is fatal. */
-        char hdrbuf[BUF_LEN];
         mhttp_send_error(fd, http431);
         mig_loop_unregister(lp, idx);
         return;
@@ -182,7 +180,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     char *chkptr;
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
     size_t bufidx, sent;
-    char hdrbuf[BUF_LEN];
+    char buf[BUF_LEN];
 
     struct stat srcstat;
 
@@ -247,40 +245,68 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
                 goto keepalive;
             }
 
-            /* Check ranges */
-            /*if((rctx->range.spec | MHTTP_RANGE_SPEC_LOW) > 0)
+            /* Range checking logic:
+             * Invalid range -> ignored.
+             * Lower bound higher then resource limit.
+             */
+            if(rctx->range.low > rctx->range.high)
             {
-                if(srcstat.st_size < rctx->range.low)
-            }*/
-
-            rctx->srclen = srcstat.st_size;
-            if(0)
+                rctx->range.spec = MHTTP_RANGE_SPEC_NONE;
+            }
+            if(rctx->range.low >= srcstat.st_size)
             {
-                send(fd, hdrbuf,
+                send(fd, buf,
                     snprintf(
-                        hdrbuf, BUF_LEN,
+                        buf, BUF_LEN,
+                        "HTTP/1.1 " http416 "\r\n"
+                        SERVER_HEADER
+                        "Content-Length: 0\r\n"
+                        "Content-Range: */%zu\r\n"
+                        "\r\n",
+                        srcstat.st_size),
+                    0);
+                goto keepalive;
+            }
+            if(rctx->range.high >= srcstat.st_size)
+            {
+                rctx->range.high = srcstat.st_size;
+            }
+
+            if(rctx->range.spec != MHTTP_RANGE_SPEC_NONE)
+            {
+                rctx->srclen = rctx->range.high - rctx->range.low;
+                send(fd, buf,
+                    snprintf(
+                        buf, BUF_LEN,
                         "HTTP/1.1 " http206 "\r\n"
                         SERVER_HEADER
                         "Content-Length: %zu\r\n"
+                        "Content-Range: bytes %zu-%zu/%zu\r\n"
                         "\r\n",
-                        rctx->srclen),
+                        rctx->srclen,
+                        rctx->range.low, rctx->range.high, srcstat.st_size),
                     0);
             }
             else
             {
-                send(fd, hdrbuf,
+                rctx->srclen = srcstat.st_size;
+                send(fd, buf,
                     snprintf(
-                        hdrbuf, BUF_LEN,
+                        buf, BUF_LEN,
                         "HTTP/1.1 " http200 "\r\n"
                         SERVER_HEADER
                         "Content-Length: %zu\r\n"
                         "\r\n",
-                        rctx->srclen),
+                        srcstat.st_size),
                     0);
             }
             if(rctx->method == MHTTP_METHOD_GET)
             {
                 rctx->srcfd = srcfd = open(rctx->uri+1, 0);
+                if(rctx->range.spec != MHTTP_RANGE_SPEC_NONE)
+                {
+                    lseek(srcfd, rctx->range.low, SEEK_SET);
+                }
                 /* Uses req context buffer - req->uri is now invalid. */
                 rctx->bufend = 0;
                 mig_loop_setcall(lp, idx, mhttp_req_send);
@@ -291,9 +317,9 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
             }
             break;
         case MHTTP_METHOD_OPTIONS:
-            send(fd, hdrbuf,
+            send(fd, buf,
                 snprintf(
-                    hdrbuf, BUF_LEN,
+                    buf, BUF_LEN,
                     "HTTP/1.1 %s\r\n"
                     "Allow: %s\r\n"
                     "\r\n",
