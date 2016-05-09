@@ -70,7 +70,7 @@ void mig_loop_unregister(struct mig_loop *loop, size_t idx)
         {
             entctxp->free(loop, idx);
         }
-        *entctxp = MIG_ENT_EMPTY; 
+        *entctxp = MIG_ENT_EMPTY;
         loop->entfds[idx].fd = -1;
         loop->entfds[idx].events = 0;
         loop->entfds[idx].revents = 0;

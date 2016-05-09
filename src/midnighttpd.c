@@ -19,13 +19,17 @@
 
 #define MIDNIGHTTPD "midnighttpd"
 
-#define MAX_CONNS 5
+#define MAX_CONNS 512
 
 #ifndef SECRECY
     #define SERVER_HEADER "Server: " MIDNIGHTTPD "\r\n"
 #else
     #define SERVER_HEADER ""
 #endif
+
+/* A nice hacro - expand and concatenate */
+#define expcat(a, b) inner_expcat(a, b)
+#define inner_expcat(a, b) a ## b
 
 #define http200 "200 OK"
 #define http204 "204 No content"
@@ -50,7 +54,12 @@
      "\r\n")
 
 #define mhttp_send_error(fd, error, ...) \
-    send(fd, mhttp_error_resp(error, __VA_ARGS__), sizeof(mhttp_error_resp(error, __VA_ARGS__)), 0)
+    expcat(retry_send_, __LINE__):\
+    if(send(fd,\
+        mhttp_error_resp(error, __VA_ARGS__),\
+        sizeof(mhttp_error_resp(error, __VA_ARGS__)),\
+        0) == -1 && errno == EINTR)\
+    { goto expcat(retry_send_, __LINE__); }
 
 #define BUF_LEN 2048
 
@@ -101,6 +110,7 @@ void mhttp_req_free(struct mig_loop *lp, size_t idx)
         free(ctx);
     }
     close(mig_loop_getfd(lp, idx));
+    printf("[%zu] Connection closed.\n", idx);
 }
 
 void mhttp_req_resetctx(struct mhttp_req *rctx)
@@ -156,7 +166,7 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
     printf("[%zu] recv'd %zu bytes of data.\n", idx, recvd);
     if(recvd == 0)
     {
-        printf("[%zu] Connection closed.\n", idx);
+        printf("[%zu] EOS before headers recv'd.\n", idx);
         mig_loop_unregister(lp, idx);
         return;
     }
@@ -244,14 +254,29 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     {
         case MHTTP_METHOD_GET:
         case MHTTP_METHOD_HEAD:
+            retry_stat:
             if(stat(rctx->uri+1, &srcstat))
             {
+                switch(errno)
+                {
+                    case EINTR:
+                        goto retry_stat;
+                    case ENAMETOOLONG:
+                        mhttp_send_error(fd, http414);
+                        break;
+                    case EACCES:
+                        mhttp_send_error(fd, http403);
+                        break;
+                    case ENOENT:
+                        mhttp_send_error(fd, http404);
+                        break;
+                    case ELOOP:
+                        mhttp_send_error(fd, http508);
+                        break;
+                    default:
+                        mhttp_send_error(fd, http500);
+                }
                 printf("[%zu] stat error: %s\n", idx, strerror(errno));
-                if(errno == ENAMETOOLONG) { mhttp_send_error(fd, http414); }
-                else if(errno == EACCES)  { mhttp_send_error(fd, http403); }
-                else if(errno == ENOENT)  { mhttp_send_error(fd, http404); }
-                else if(errno == ELOOP)   { mhttp_send_error(fd, http508); }
-                else                      { mhttp_send_error(fd, http500); }
                 goto keepalive;
             }
 
@@ -371,12 +396,19 @@ void mhttp_req_send(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
-    size_t chunklen, sent;
+    size_t chunklen;
+    ssize_t sent;
+
     /* Check if buffer is empty */
     if(rctx->bufend == 0)
     {
         chunklen = rctx->srclen < rctx->buflen ? rctx->srclen : rctx->buflen;
+        retry_read:
         sent = read(rctx->srcfd, rctx->buf, chunklen); /* Sent here means amount read. */
+        if(sent == -1)
+        {
+            if(errno == EINTR) { goto retry_read; } else { goto io_error; }
+        }
         rctx->srclen -= chunklen;
         if(sent != chunklen)
         {
@@ -387,7 +419,12 @@ void mhttp_req_send(struct mig_loop *lp, size_t idx)
         rctx->bufend = sent;
     }
 
+    retry_send:
     sent = send(fd, rctx->buf + rctx->bufoff, rctx->bufend, 0);
+    if(sent == -1)
+    {
+        if(errno == EINTR) { goto retry_send; } else { goto io_error; }
+    }
     rctx->bufoff += sent;
     rctx->bufend -= sent;
 
@@ -400,11 +437,14 @@ void mhttp_req_send(struct mig_loop *lp, size_t idx)
             mig_loop_setcall(lp, idx, mhttp_req_recv);
             mig_loop_setcond(lp, idx, MIG_COND_READ);
         }
+        return;
     }
-    else
-    {
-        mig_loop_unregister(lp, idx);
-    }
+
+    /* Reached if there's an IO error or this is the end of the stream.
+     * Note the mhttp_req_free function will close srcfd.
+     */
+    io_error:
+    mig_loop_unregister(lp, idx);
 }
 
 void mhttp_send_dirindex(int fd, const char *dir)
@@ -415,12 +455,12 @@ void mhttp_send_dirindex(int fd, const char *dir)
     DIR *dirp;
     struct dirent *dent;
 
-    const char *preamble =
+    const char * const preamble =
         "<!DOCTYPE html5>"
         "<head><title>%s</title></head>"
         "<body><h1>Directroy listing for %s</h1>"
             "<ul>";
-    const char *postamble =
+    const char * const postamble =
             "</ul>"
         "<body>";
 
