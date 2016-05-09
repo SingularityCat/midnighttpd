@@ -1,7 +1,7 @@
 .PHONY: all clean build tests
 
 SRCDIR=src
-CFLAGS:=${CFLAGS} -I${SRCDIR} -g
+CFLAGS:=${CFLAGS} -I${SRCDIR} -g -pedantic
 CORE_SOURCES=${SRCDIR}/mig_core.c
 CORE_HEADERS=${SRCDIR}/mig_core.h
 

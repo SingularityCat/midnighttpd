@@ -6,7 +6,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#define MAX_CONNS 5
+#define MAX_CONNS 10
 
 int clients[MAX_CONNS];
 size_t clidx = 0;
@@ -82,7 +82,7 @@ int main(int argc, char **argv)
     int servsock;
     struct sockaddr_in addr;
 
-    bzero((void *) &addr, sizeof(addr));
+    memset((void *) &addr, 0, sizeof(addr));
     servsock = socket(AF_INET, SOCK_STREAM, 0);
     setsockopt(servsock, SOL_SOCKET, SO_REUSEADDR, NULL, 0);
 

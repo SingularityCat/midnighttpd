@@ -311,7 +311,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
                     "Content-Length: 0\r\n"
                     "Content-Range: */%zu\r\n"
                     "\r\n",
-                    srcstat.st_size);
+                    (size_t) srcstat.st_size);
                 goto keepalive;
             }
             if(rctx->range.high >= srcstat.st_size)
@@ -329,7 +329,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
                     "Content-Range: bytes %zu-%zu/%zu\r\n"
                     "\r\n",
                     rctx->srclen,
-                    rctx->range.low, rctx->range.high, srcstat.st_size);
+                    rctx->range.low, rctx->range.high, (size_t) srcstat.st_size);
             }
             else
             {
@@ -494,7 +494,7 @@ int main(int argc, char **argv)
     int ssopt_v = 1;
     struct sockaddr_in addr;
 
-    bzero((void *) &addr, sizeof(addr));
+    memset((void *) &addr, 0, sizeof(addr));
     servsock = socket(AF_INET, SOCK_STREAM, 0);
     setsockopt(servsock, SOL_SOCKET, SO_REUSEADDR, &ssopt_v, sizeof(ssopt_v));
 
