@@ -1,4 +1,4 @@
-.PHONY: all clean build tests
+.PHONY: all clean build test
 
 SRCDIR=src
 CFLAGS:=${CFLAGS} -I${SRCDIR} -g -pedantic
@@ -16,15 +16,16 @@ ${SRCDIR}/mhttp_range.h
 all: build
 
 clean:
-	rm -f midnighttpd tchat test
+	rm -f midnighttpd tchat mig_test
 
 build: midnighttpd tchat
 
-test: ${CORE_SOURCES} ${CORE_HEADERS} tests/test.c
-	${CC} ${LDFLAGS} ${CFLAGS} -o test tests/test.c ${CORE_SOURCES}
+test:
+mig_test: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/mig_test.c
+	${CC} ${LDFLAGS} ${CFLAGS} -o mig_test testprogs/mig_test.c ${CORE_SOURCES}
 
-tchat: ${CORE_SOURCES} ${CORE_HEADERS} tests/tchat.c
-	${CC} ${LDFLAGS} ${CFLAGS} -o tchat tests/tchat.c ${CORE_SOURCES}
+tchat: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/tchat.c
+	${CC} ${LDFLAGS} ${CFLAGS} -o tchat testprogs/tchat.c ${CORE_SOURCES}
 
 midnighttpd: ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} src/midnighttpd.c
 	${CC} ${LDFLAGS} ${CFLAGS} -o midnighttpd src/midnighttpd.c ${CORE_SOURCES} ${MHTTP_SOURCES}
