@@ -508,6 +508,10 @@ int main(int argc, char **argv)
 
     struct mig_loop *lp = mig_loop_create(MAX_CONNS + 1);
     mig_loop_register(lp, servsock, mhttp_accept, NULL, MIG_COND_READ, NULL);
-    mig_loop_exec(lp);
+    if(mig_loop_exec(lp))
+    {
+        perror("midnighttpd - loop failed");
+        return -1;
+    }
     return 0;
 }
