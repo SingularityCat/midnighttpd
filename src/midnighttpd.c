@@ -46,18 +46,17 @@
 #define http503 "503 Service Unavailable"
 #define http508 "508 Loop Detected"
 
-#define mhttp_error_resp(error, ...) \
+#define mhttp_error_resp(error) \
     ("HTTP/1.1 " error "\r\n"\
      SERVER_HEADER\
      "Content-Length: 0\r\n"\
-     __VA_ARGS__\
      "\r\n")
 
-#define mhttp_send_error(fd, error, ...) \
+#define mhttp_send_error(fd, error) \
     expcat(retry_send_, __LINE__):\
     if(send(fd,\
-        mhttp_error_resp(error, __VA_ARGS__),\
-        sizeof(mhttp_error_resp(error, __VA_ARGS__)),\
+        mhttp_error_resp(error),\
+        sizeof(mhttp_error_resp(error)),\
         0) == -1 && errno == EINTR)\
     { goto expcat(retry_send_, __LINE__); }
 
