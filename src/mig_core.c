@@ -19,7 +19,7 @@ struct mig_loop *mig_loop_create(size_t maxfds)
     for(i = maxfds; i > 0; i--)
     {
         loop->entfds[i - 1].fd = -1;
-        mig_zstk_push(loop->freestk, i - 1);
+        (void) mig_zstk_push(loop->freestk, i - 1);
     }
     return loop;
 }
@@ -74,7 +74,7 @@ void mig_loop_unregister(struct mig_loop *loop, size_t idx)
         loop->entfds[idx].fd = -1;
         loop->entfds[idx].events = 0;
         loop->entfds[idx].revents = 0;
-        mig_zstk_push(loop->freestk, idx);
+        (void) mig_zstk_push(loop->freestk, idx);
     }
 }
 
@@ -132,7 +132,7 @@ extern inline int mig_loop_getfd(struct mig_loop *loop, size_t idx)
 extern inline void mig_loop_setfd(struct mig_loop *loop, size_t idx, int fd)
 {
     loop->entarr[idx].fd = fd;
-    if(!loop->entfds[idx].fd > 0)
+    if(loop->entfds[idx].fd != -1)
     {
         loop->entfds[idx].fd = fd;
     }

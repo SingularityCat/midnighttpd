@@ -62,7 +62,7 @@ void tchat_free(struct mig_loop *lp, size_t idx)
             break;
         }
     }
-    for(i; i < (clidx - 1); i++)
+    for(; i < (clidx - 1); i++)
     {
         clients[i] = clients[i + 1];
     }
