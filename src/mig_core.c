@@ -79,14 +79,22 @@ void mig_loop_unregister(struct mig_loop *loop, size_t idx)
 }
 
 
-void mig_loop_exec(struct mig_loop *loop)
+int mig_loop_exec(struct mig_loop *loop)
 {
     int hfds, rfds;
     size_t idx;
     struct pollfd *curfdp;
     while(1)
     {
+        if(mig_zstk_full(loop->freestk))
+        {
+            break;
+        }
         rfds = poll(loop->entfds, loop->entlen, -1);
+        if(rfds < 0)
+        {
+            return -1;
+        }
         for(hfds = 0, idx = 0; idx < loop->entlen && hfds < rfds; idx++)
         {
             curfdp = loop->entfds + idx;
@@ -97,6 +105,7 @@ void mig_loop_exec(struct mig_loop *loop)
             }
         }
     }
+    return 0;
 }
 
 extern inline void mig_loop_disable(struct mig_loop *loop, size_t idx)

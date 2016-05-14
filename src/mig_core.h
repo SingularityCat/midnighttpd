@@ -12,10 +12,11 @@ struct mig_zstk {
     size_t len;
 };
 
-#define mig_zstk_init(stk, z) ((stk.base = calloc(stk.len = z, sizeof(size_t))), (stk.top = 0))
-#define mig_zstk_push(stk, v) (stk.top < stk.len ? (stk.base[stk.top++] = v), true : false)
-#define mig_zstk_pop(stk, v_ptr) (stk.top > 0 ? (*v_ptr = stk.base[--stk.top]), true : false)
-#define mig_zstk_free(stk) (free(stk.base))
+#define mig_zstk_init(stk, z) (((stk).base = calloc((stk).len = z, sizeof(size_t))), ((stk).top = 0))
+#define mig_zstk_push(stk, v) ((stk).top < (stk).len ? ((stk).base[(stk).top++] = v), true : false)
+#define mig_zstk_pop(stk, v_ptr) ((stk).top > 0 ? (*v_ptr = (stk).base[--(stk).top]), true : false)
+#define mig_zstk_free(stk) ((stk).top = 0, (stk).len = 0, free((stk).base))
+#define mig_zstk_full(stk) ((stk).top == (stk).len)
 
 enum mig_cond {
     MIG_COND_READ  = POLLIN,
@@ -49,7 +50,7 @@ void mig_loop_destroy(struct mig_loop *loop);
 size_t mig_loop_register(struct mig_loop *loop, int fd, mig_callback callfp, mig_callback freefp, enum mig_cond cond, void *dptr);
 void mig_loop_unregister(struct mig_loop *loop, size_t idx);
 
-void mig_loop_exec(struct mig_loop *loop);
+int mig_loop_exec(struct mig_loop *loop);
 
 
 void mig_loop_disable(struct mig_loop *loop, size_t idx);
