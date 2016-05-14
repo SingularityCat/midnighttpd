@@ -27,5 +27,5 @@ mig_test: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/mig_test.c
 tchat: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/tchat.c
 	${CC} ${LDFLAGS} ${CFLAGS} -o tchat testprogs/tchat.c ${CORE_SOURCES}
 
-midnighttpd: ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} src/midnighttpd.c
-	${CC} ${LDFLAGS} ${CFLAGS} -o midnighttpd src/midnighttpd.c ${CORE_SOURCES} ${MHTTP_SOURCES}
+midnighttpd: ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} src/midnighttpd.c src/midnighttpd_config.c src/midnighttpd_config.h
+	${CC} ${LDFLAGS} ${CFLAGS} -o midnighttpd src/midnighttpd.c src/midnighttpd_config.c ${CORE_SOURCES} ${MHTTP_SOURCES}

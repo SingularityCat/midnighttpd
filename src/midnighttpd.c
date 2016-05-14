@@ -17,15 +17,7 @@
 #include "mhttp_method.h"
 #include "mhttp_range.h"
 
-#define MIDNIGHTTPD "midnighttpd"
-
-#define MAX_CONNS 512
-
-#ifndef SECRECY
-    #define SERVER_HEADER "Server: " MIDNIGHTTPD "\r\n"
-#else
-    #define SERVER_HEADER ""
-#endif
+#include "midnighttpd_config.h"
 
 /* A nice hacro - expand and concatenate */
 #define expcat(a, b) inner_expcat(a, b)
@@ -59,8 +51,6 @@
         sizeof(mhttp_error_resp(error)),\
         0) == -1 && errno == EINTR)\
     { goto expcat(retry_send_, __LINE__); }
-
-#define BUF_LEN 2048
 
 struct mhttp_req
 {
@@ -127,9 +117,9 @@ void mhttp_req_resetctx(struct mhttp_req *rctx)
 void mhttp_req_init(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
-    struct mhttp_req *rctx = malloc(sizeof(*rctx) + BUF_LEN);
+    struct mhttp_req *rctx = malloc(sizeof(*rctx) + config.header_buflen);
     rctx->buf = (char *) (rctx + 1);
-    rctx->buflen = BUF_LEN;
+    rctx->buflen = config.header_buflen;
     mhttp_req_resetctx(rctx);
     mig_loop_setdata(lp, idx, rctx);
     mig_loop_setcall(lp, idx, mhttp_req_recv);
@@ -448,7 +438,7 @@ void mhttp_req_send(struct mig_loop *lp, size_t idx)
 
 void mhttp_send_dirindex(int fd, const char *dir)
 {
-    const size_t buflen = 4096;
+    const size_t buflen = config.dirlst_buflen;
     char buf[buflen];
     size_t written;
     DIR *dirp;
@@ -504,9 +494,9 @@ int main(int argc, char **argv)
         perror("bind");
         return 1;
     }
-    listen(servsock, MAX_CONNS + 1);
+    listen(servsock, config.loop_slots);
 
-    struct mig_loop *lp = mig_loop_create(MAX_CONNS + 1);
+    struct mig_loop *lp = mig_loop_create(config.loop_slots);
     mig_loop_register(lp, servsock, mhttp_accept, NULL, MIG_COND_READ, NULL);
     if(mig_loop_exec(lp))
     {
