@@ -3,15 +3,16 @@
 SRCDIR=src
 CFLAGS:=${CFLAGS} -I${SRCDIR} -g -pedantic
 CORE_SOURCES=${SRCDIR}/mig_core.c
-CORE_HEADERS=${SRCDIR}/mig_core.h
+CORE_HEADERS=${SRCDIR}/mig_core.h ${SRCDIR}/mig_io.h
 
 MHTTP_SOURCES=\
 ${SRCDIR}/mhttp_util.c\
 ${SRCDIR}/mhttp_range.c
 MHTTP_HEADERS=\
-${SRCDIR}/mhttp_method.h\
 ${SRCDIR}/mhttp_util.h\
-${SRCDIR}/mhttp_range.h
+${SRCDIR}/mhttp_range.h\
+${SRCDIR}/mhttp_method.h\
+${SRCDIR}/mhttp_status.h
 
 all: build
 
