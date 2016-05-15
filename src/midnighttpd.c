@@ -88,8 +88,12 @@ void mhttp_req_init(struct mig_loop *lp, size_t idx)
         config.header_buflen);
     rctx->rxbuf.base = (char *) (rctx + 1);
     rctx->rxbuf.len = config.header_buflen;
+    rctx->rxbuf.end = 0;
+    rctx->rxbuf.off = 0;
     rctx->txbuf.base = rctx->rxbuf.base + rctx->rxbuf.len;
     rctx->txbuf.len = config.header_buflen;
+    rctx->txbuf.end = 0;
+    rctx->txbuf.off = 0;
     mig_buf_empty(&rctx->rxbuf);
     mhttp_req_resetctx(rctx);
     mig_loop_setdata(lp, idx, rctx);
