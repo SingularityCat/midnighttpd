@@ -1,3 +1,6 @@
+#ifndef MIDNIGHTTPD_CONFIG_H
+#define MIDNIGHTTPD_CONFIG_H
+
 #include <stdlib.h>
 #include <stdbool.h>
 
@@ -17,3 +20,5 @@ struct midnighttpd_config {
 };
 
 extern struct midnighttpd_config config;
+
+#endif
