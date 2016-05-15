@@ -23,10 +23,8 @@
 
 struct mhttp_req
 {
-    char *buf;
-    size_t buflen;
-    size_t bufend;
-    size_t bufoff; /* Used in req_send */
+    struct mig_buf rxbuf;
+    struct mig_buf txbuf;
     enum mhttp_method method;
     const char *uri;
     const char *arg;
@@ -73,8 +71,6 @@ void mhttp_req_free(struct mig_loop *lp, size_t idx)
 
 void mhttp_req_resetctx(struct mhttp_req *rctx)
 {
-    rctx->bufend = 0;
-    rctx->bufoff = 0;
     rctx->range.low = 0;
     rctx->range.high = -1;
     rctx->range.spec = MHTTP_RANGE_SPEC_NONE;
@@ -86,9 +82,15 @@ void mhttp_req_resetctx(struct mhttp_req *rctx)
 void mhttp_req_init(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
-    struct mhttp_req *rctx = malloc(sizeof(*rctx) + config.header_buflen);
-    rctx->buf = (char *) (rctx + 1);
-    rctx->buflen = config.header_buflen;
+    struct mhttp_req *rctx = malloc(
+        sizeof(*rctx) +
+        config.header_buflen +
+        config.header_buflen);
+    rctx->rxbuf.base = (char *) (rctx + 1);
+    rctx->rxbuf.len = config.header_buflen;
+    rctx->txbuf.base = rctx->rxbuf.base + rctx->rxbuf.len;
+    rctx->txbuf.len = config.header_buflen;
+    mig_buf_empty(&rctx->rxbuf);
     mhttp_req_resetctx(rctx);
     mig_loop_setdata(lp, idx, rctx);
     mig_loop_setcall(lp, idx, mhttp_req_recv);
@@ -101,10 +103,10 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
     int fd = mig_loop_getfd(lp, idx);
     char *chkptr;
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
-    size_t prevend = rctx->bufend;
+    size_t prevend = rctx->rxbuf.end;
     size_t offset;
 
-    if(rctx->bufend >= rctx->buflen)
+    if(mig_buf_full(&rctx->rxbuf))
     {
         /* Header too big. This is fatal. */
         mhttp_send_error(fd, http431);
@@ -112,7 +114,7 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
         return;
     }
 
-    size_t recvd = recv(fd, rctx->buf + rctx->bufend, rctx->buflen - rctx->bufend, 0);
+    size_t recvd = mig_buf_read(&rctx->rxbuf, fd, -1);
     if(recvd == -1)
     {
         printf("[%zu] recv error: %s\n", idx, strerror(errno));
@@ -120,7 +122,6 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
         return;
     }
 
-    rctx->bufend += recvd;
     printf("[%zu] recv'd %zu bytes of data.\n", idx, recvd);
     if(recvd == 0)
     {
@@ -131,14 +132,14 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
 
     /* As we can recv bytes individually, we must check up to the previous 3 bytes as well */
     offset = prevend < 3 ? prevend : 3;
-    chkptr = memmem(rctx->buf + prevend - offset, recvd + offset, "\r\n\r\n", 4);
+    chkptr = memmem(rctx->rxbuf.base + prevend - offset, recvd + offset, "\r\n\r\n", 4);
 
     if(chkptr != NULL)
     {
         printf("[%zu] Headers complete.\n", idx);
         /* Make a null terminated string */
         *chkptr = 0;
-        rctx->bufend = chkptr - rctx->buf;
+        rctx->rxbuf.end = chkptr - rctx->rxbuf.base;
         /* switch to intr */
         mig_loop_setcall(lp, idx, mhttp_req_intr);
         mig_loop_setcond(lp, idx, MIG_COND_WRITE);
@@ -156,7 +157,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     struct stat srcstat;
 
     /* Analyse client headers */
-    rctx->method = mhttp_interpret_method(rctx->buf);
+    rctx->method = mhttp_interpret_method(rctx->rxbuf.base);
     if (rctx->method == MHTTP_METHOD_NONE)
     {
         mhttp_send_error(fd, http501);
@@ -177,9 +178,9 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
         return;
     }
 
-    rctx->uri = strchr(rctx->buf, ' ') + 1;
+    rctx->uri = strchr(rctx->rxbuf.base, ' ') + 1;
     chkptr = strchr(rctx->uri, ' ');
-    if(chkptr == NULL && (chkptr - rctx->buf) >= rctx->bufend)
+    if(chkptr == NULL && (chkptr - rctx->rxbuf.base) >= rctx->rxbuf.end)
     {
         goto malformed_err;
     }
@@ -187,9 +188,9 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     mhttp_urldecode(rctx->uri, (char *) rctx->uri, chkptr+1 - rctx->uri);
     printf("[%zu] URI: %s\n", idx, rctx->uri);
 
-    bufidx = (chkptr + 1) - rctx->buf;
+    bufidx = (chkptr + 1) - rctx->rxbuf.base;
 
-    chkptr = strstr(rctx->buf + bufidx, "\r\n");
+    chkptr = strstr(rctx->rxbuf.base + bufidx, "\r\n");
     while(chkptr != NULL)
     {
         chkptr += 2; /* Skip crlf */
@@ -204,8 +205,8 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
             chkptr += 6;
             if(mhttp_parse_range(chkptr, &rctx->range)) { goto malformed_err; }
         }
-        bufidx = (chkptr - rctx->buf);
-        chkptr = strstr(rctx->buf + bufidx, "\r\n");
+        bufidx = (chkptr - rctx->rxbuf.base);
+        chkptr = strstr(rctx->rxbuf.base + bufidx, "\r\n");
     }
 
     switch(rctx->method)
@@ -306,8 +307,6 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
                 {
                     lseek(srcfd, rctx->range.low, SEEK_SET);
                 }
-                /* Uses req context buffer - req->uri is now invalid. */
-                rctx->bufend = 0;
                 mig_loop_setcall(lp, idx, mhttp_req_send);
             }
             else
@@ -358,33 +357,21 @@ void mhttp_req_send(struct mig_loop *lp, size_t idx)
     ssize_t sent;
 
     /* Check if buffer is empty */
-    if(rctx->bufend == 0)
+    if(rctx->txbuf.end == 0)
     {
-        chunklen = rctx->srclen < rctx->buflen ? rctx->srclen : rctx->buflen;
-        retry_read:
-        sent = read(rctx->srcfd, rctx->buf, chunklen); /* Sent here means amount read. */
-        if(sent == -1)
-        {
-            if(errno == EINTR) { goto retry_read; } else { goto io_error; }
-        }
-        rctx->srclen -= chunklen;
-        if(sent != chunklen)
+        chunklen = rctx->srclen < rctx->txbuf.len ? rctx->srclen : rctx->txbuf.len;
+        sent = mig_buf_read(&rctx->txbuf, rctx->srcfd, rctx->srclen); /* Sent here means amount read. */
+        if(sent == -1) { goto io_error; }
+        else if(sent == 0 && rctx->srclen > 0)
         {
             /* Huh? Early end of file? Set the EOS flag to bail gracefully */
             rctx->eos = true;
         }
-        rctx->bufoff = 0;
-        rctx->bufend = sent;
+        rctx->srclen -= sent;
     }
 
-    retry_send:
-    sent = send(fd, rctx->buf + rctx->bufoff, rctx->bufend, 0);
-    if(sent == -1)
-    {
-        if(errno == EINTR) { goto retry_send; } else { goto io_error; }
-    }
-    rctx->bufoff += sent;
-    rctx->bufend -= sent;
+    sent = mig_buf_write(&rctx->txbuf, fd, -1);
+    if(sent == -1) { goto io_error; }
 
     if(!rctx->eos)
     {
@@ -392,6 +379,8 @@ void mhttp_req_send(struct mig_loop *lp, size_t idx)
         {
             close(rctx->srcfd);
             mhttp_req_resetctx(rctx);
+            mig_buf_shift(&rctx->rxbuf);
+            mig_buf_empty(&rctx->txbuf);
             mig_loop_setcall(lp, idx, mhttp_req_recv);
             mig_loop_setcond(lp, idx, MIG_COND_READ);
         }

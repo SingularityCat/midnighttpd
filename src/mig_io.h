@@ -2,6 +2,8 @@
 #define MIG_IO_H
 
 #include <stdlib.h>
+#include <stdbool.h>
+#include <errno.h>
 #include <unistd.h>
 #include <string.h>
 
@@ -39,17 +41,19 @@ struct mig_buf
 };
 
 
-static inline size_t mig_buf_read(struct mig_buf *buf, int fd)
+static inline size_t mig_buf_read(struct mig_buf *buf, int fd, size_t lim)
 {
-    size_t n = mig_unintr_read(fd, buf->base + buf->end, buf->len - buf->end);
+    size_t c = (buf->len - buf->end) < lim ? buf->len - buf->end : lim;
+    size_t n = mig_unintr_read(fd, buf->base + buf->end, c);
     buf->end += n;
     return n;
 }
 
 
-static inline size_t mig_buf_write(struct mig_buf *buf, int fd)
+static inline size_t mig_buf_write(struct mig_buf *buf, int fd, size_t lim)
 {
-    size_t n = mig_unintr_write(fd, buf->base + buf->off, buf->end - buf->off);
+    size_t c = (buf->end - buf->off) < lim ? buf->end - buf->off : lim;
+    size_t n = mig_unintr_write(fd, buf->base + buf->off, c);
     buf->off += n;
     return n;
 }
@@ -63,6 +67,12 @@ static inline void mig_buf_shift(struct mig_buf *buf)
         buf->end -= buf->off;
         buf->off = 0;
     }
+}
+
+
+static inline bool mig_buf_full(struct mig_buf *buf)
+{
+    return buf->end >= buf->len;
 }
 
 
