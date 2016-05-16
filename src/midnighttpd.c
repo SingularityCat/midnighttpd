@@ -9,7 +9,10 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+
 #include <dirent.h>
 
 #include "mig_core.h"
@@ -439,30 +442,122 @@ void mhttp_send_dirindex(int fd, const char *dir)
     mhttp_send_error(fd, http500);
 }
 
+/* Socket addresses have the form:
+ * <socket addr> ::= <addr> ":" <port> |
+ *                   <ipv4 addr> |
+ *                   <ipv6 addr> |
+ *                   <unix addr>
+ *
+ * <addr> ::= <ipv4 addr> |
+ *            "[" <ipv6 addr> "]"
+ * <port> ::= <integer>
+ *
+ */
+
+bool sockaddr_parse(char **addr_p, char **port_p)
+{
+    bool retval = true;
+    char *port =  strrchr(*addr_p, ':');
+    char *lbrack = strchr(*addr_p, '[');
+    char *rbrack = strchr(*addr_p, ']');
+
+    if(port && lbrack && rbrack && rbrack < port)
+    {
+        /* Address is a [ipv6]:port address. */
+        *port_p = port + 1;
+        *port = 0;
+        *lbrack = 0;
+        *rbrack = 0;
+        *addr_p = lbrack + 1;
+    }
+    else if(port && lbrack == NULL && rbrack == NULL)
+    {
+        /* Address is a ipv4:port address */
+        *port_p = port + 1;
+        *port = 0;
+    }
+    else if(lbrack && port < rbrack)
+    {
+        /* Address is a [ipv6] address */
+        *port_p = NULL;
+    }
+    else if(port == NULL && lbrack == NULL && rbrack == NULL)
+    {
+        /* Address is a ipv4 address */
+        *port_p = NULL;
+    }
+    else
+    {
+        /* Address is malformed */
+        *addr_p = NULL;
+        *port_p = NULL;
+        retval = false;
+    }
+
+    return retval;
+}
+
+int cfg_bind(struct mig_loop *loop, char *addr)
+{
+    int ssopt_v = 1;
+    int servsock;
+
+    char *port;
+    if(!sockaddr_parse(&addr, &port))
+    {
+        return -1;
+    }
+
+    int gairet;
+    struct addrinfo aih, *aip, *aic;
+    memset(&aih, 0, sizeof(struct addrinfo));
+    aih.ai_family = AF_UNSPEC;
+    aih.ai_socktype = SOCK_STREAM;
+    aih.ai_flags = AI_PASSIVE | AI_V4MAPPED | AI_ADDRCONFIG;
+    aih.ai_protocol = 0;
+    aih.ai_canonname = NULL;
+    aih.ai_addr = NULL;
+    aih.ai_next = NULL;
+
+    gairet = getaddrinfo(addr, port, &aih, &aip);
+    if(gairet)
+    {
+        printf("midnighttpd error - getaddrinfo: %s\n", gai_strerror(gairet));
+        return -1;
+    }
+
+    aic = aip;
+    while(aic)
+    {
+        servsock = socket(aic->ai_family, aic->ai_socktype, 0);
+        setsockopt(servsock, SOL_SOCKET, SO_REUSEADDR, &ssopt_v, sizeof(ssopt_v));
+        if(bind(servsock, aic->ai_addr, aic->ai_addrlen))
+        {
+            printf("midnighttpd error - bind: %s\n", strerror(errno));
+        }
+        listen(servsock, config.loop_slots);
+        mig_loop_register(loop, servsock, mhttp_accept, NULL, MIG_COND_READ, NULL);
+        aic = aic->ai_next;
+    }
+    freeaddrinfo(aip);
+    return 0;
+}
+
+int cfg_bindunix(struct mig_loop *loop, char *path)
+{
+    return -1;
+}
+
 int main(int argc, char **argv)
 {
-    int servsock;
-    int ssopt_v = 1;
-    struct sockaddr_in addr;
+    struct mig_loop *loop = mig_loop_create(config.loop_slots);
+    char addr[] = "0:31337";
 
-    memset((void *) &addr, 0, sizeof(addr));
-    servsock = socket(AF_INET, SOCK_STREAM, 0);
-    setsockopt(servsock, SOL_SOCKET, SO_REUSEADDR, &ssopt_v, sizeof(ssopt_v));
+    cfg_bind(loop, addr);
 
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(31337);
-    if(bind(servsock, &addr, sizeof(addr)))
+    if(mig_loop_exec(loop))
     {
-        perror("bind");
-        return 1;
-    }
-    listen(servsock, config.loop_slots);
-
-    struct mig_loop *lp = mig_loop_create(config.loop_slots);
-    mig_loop_register(lp, servsock, mhttp_accept, NULL, MIG_COND_READ, NULL);
-    if(mig_loop_exec(lp))
-    {
-        perror("midnighttpd - loop failed");
+        printf("midnighttpd error - loop failed: %s\n", strerror(errno));
         return -1;
     }
     return 0;
