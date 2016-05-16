@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include <errno.h>
 #include <poll.h>
 
 /* size_t stack */
@@ -34,6 +35,7 @@ struct mig_loop {
     struct mig_ent *entarr;
     struct mig_zstk freestk;
     size_t entlen;
+    bool terminate;
 };
 
 struct mig_ent {
@@ -51,7 +53,7 @@ size_t mig_loop_register(struct mig_loop *loop, int fd, mig_callback callfp, mig
 void mig_loop_unregister(struct mig_loop *loop, size_t idx);
 
 int mig_loop_exec(struct mig_loop *loop);
-
+void mig_loop_terminate(struct mig_loop *loop);
 
 void mig_loop_disable(struct mig_loop *loop, size_t idx);
 void mig_loop_enable(struct mig_loop *loop, size_t idx);

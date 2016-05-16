@@ -21,6 +21,7 @@ struct mig_loop *mig_loop_create(size_t maxfds)
         loop->entfds[i - 1].fd = -1;
         (void) mig_zstk_push(loop->freestk, i - 1);
     }
+    loop->terminate = false;
     return loop;
 }
 
@@ -84,7 +85,7 @@ int mig_loop_exec(struct mig_loop *loop)
     int hfds, rfds;
     size_t idx;
     struct pollfd *curfdp;
-    while(1)
+    while(!loop->terminate)
     {
         if(mig_zstk_full(loop->freestk))
         {
@@ -93,6 +94,10 @@ int mig_loop_exec(struct mig_loop *loop)
         rfds = poll(loop->entfds, loop->entlen, -1);
         if(rfds < 0)
         {
+            if(errno == EINTR)
+            {
+                continue;
+            }
             return -1;
         }
         for(hfds = 0, idx = 0; idx < loop->entlen && hfds < rfds; idx++)
@@ -106,6 +111,11 @@ int mig_loop_exec(struct mig_loop *loop)
         }
     }
     return 0;
+}
+
+void mig_loop_terminate(struct mig_loop *loop)
+{
+    loop->terminate = true;
 }
 
 extern inline void mig_loop_disable(struct mig_loop *loop, size_t idx)
