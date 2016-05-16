@@ -551,9 +551,52 @@ int cfg_bindunix(struct mig_loop *loop, char *path)
 int main(int argc, char **argv)
 {
     struct mig_loop *loop = mig_loop_create(config.loop_slots);
-    char addr[] = "0:31337";
+    char addr[] = "0:8080";
+    int naddrs = 0;
+    const char *usage = 
+        "midnighttpd - http daemon\n"
+        "usage:\n"
+        " -l addr[:port]\n"
+        "       Listen on a given address/port combination.\n"
+        "       If port is unspecified, default to port 80.\n"
+        "       If address is an IPv6 address, it should be\n"
+        "       surrounded by [square brackets]. e.g. [::1]\n"
+        " -u unixaddr\n"
+        "       Listen on a unix domain socket\n"
+        " -h, -?\n"
+        "       Show this help text.\n"
+        "";
 
-    cfg_bind(loop, addr);
+    const char *opts = "l:u:h";
+    int opt = getopt(argc, argv, opts);
+    while(opt != -1)
+    {
+        switch(opt)
+        {
+            case 'l':
+                if(!cfg_bind(loop, optarg))
+                {
+                    naddrs++;
+                }
+                break;
+            case 'u':
+                if(!cfg_bindunix(loop, optarg))
+                {
+                    naddrs++;
+                }
+                break;
+            case '?':
+            case 'h':
+                puts(usage);
+                return 1;
+        }
+        opt = getopt(argc, argv, opts);
+    }
+
+    if(naddrs < 1)
+    {
+        cfg_bind(loop, addr);
+    }
 
     if(mig_loop_exec(loop))
     {
