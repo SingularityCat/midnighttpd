@@ -5,12 +5,13 @@
 #include <ctype.h>
 #include <errno.h>
 
+#include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <netdb.h>
 
 #include <dirent.h>
@@ -499,14 +500,18 @@ bool sockaddr_parse(char **addr_p, char **port_p)
 
 int cfg_bind(struct mig_loop *loop, char *addr)
 {
+    int ncon = 0;
     int ssopt_v = 1;
     int servsock;
 
     char *port;
+
     if(!sockaddr_parse(&addr, &port))
     {
         return -1;
     }
+
+    printf("midnighttpd - binding to %s on port %s\n", addr, port);
 
     int gairet;
     struct addrinfo aih, *aip, *aic;
@@ -534,23 +539,51 @@ int cfg_bind(struct mig_loop *loop, char *addr)
         if(bind(servsock, aic->ai_addr, aic->ai_addrlen))
         {
             printf("midnighttpd error - bind: %s\n", strerror(errno));
+            aic = aic->ai_next;
+            continue;
         }
         listen(servsock, config.loop_slots);
         mig_loop_register(loop, servsock, mhttp_accept, NULL, MIG_COND_READ, NULL);
+        ncon++;
         aic = aic->ai_next;
     }
     freeaddrinfo(aip);
-    return 0;
+    return ncon > 0 ? 0 : -1;
 }
 
 int cfg_bindunix(struct mig_loop *loop, char *path)
 {
-    return -1;
+    int servsock;
+    struct sockaddr_un unixaddr;
+    memset(&unixaddr, 0, sizeof(struct sockaddr_un));
+    unixaddr.sun_family = AF_UNIX;
+    strncpy(unixaddr.sun_path, path, sizeof(((struct sockaddr_un *) NULL)->sun_path) - 1);
+    printf("midnighttpd - binding to unix domain socket %s\n", path);
+
+    servsock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if(bind(servsock, (struct sockaddr *) &unixaddr, sizeof(struct sockaddr_un)))
+    {
+        printf("midnighttpd error - bind: %s\n", strerror(errno));
+        return -1;
+    }
+    listen(servsock, config.loop_slots);
+    mig_loop_register(loop, servsock, mhttp_accept, NULL, MIG_COND_READ, NULL);
+
+    return 0;
+}
+
+static struct mig_loop *loop;
+
+void sigint_hndlr(int sig)
+{
+    printf("midnighttpd - terminating\n");
+    mig_loop_terminate(loop);
 }
 
 int main(int argc, char **argv)
 {
     struct mig_loop *loop = mig_loop_create(config.loop_slots);
+
     char addr[] = "0:8080";
     int naddrs = 0;
     const char *usage = 
@@ -598,10 +631,15 @@ int main(int argc, char **argv)
         cfg_bind(loop, addr);
     }
 
+    signal(SIGPIPE, SIG_IGN);
+    signal(SIGINT, sigint_hndlr);
+
     if(mig_loop_exec(loop))
     {
         printf("midnighttpd error - loop failed: %s\n", strerror(errno));
+        mig_loop_destroy(loop);
         return -1;
     }
+    mig_loop_destroy(loop);
     return 0;
 }
