@@ -146,7 +146,8 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
         printf("[%zu] Headers complete.\n", idx);
         /* Make a null terminated string */
         *chkptr = 0;
-        rctx->rxbuf.end = chkptr - rctx->rxbuf.base;
+        /* Set 'offset' of recv buffer to just after the end of this header. */
+        rctx->rxbuf.off = (chkptr - rctx->rxbuf.base) + 4;
         /* switch to intr */
         mig_loop_setcall(lp, idx, mhttp_req_intr);
         mig_loop_setcond(lp, idx, MIG_COND_WRITE);
@@ -157,7 +158,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
 {
     int srcfd, fd = mig_loop_getfd(lp, idx);
     int ret;
-    char *chkptr;
+    char *chkptr, *argptr;
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
     size_t bufidx, sent;
 
@@ -186,13 +187,21 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     }
 
     rctx->uri = strchr(rctx->rxbuf.base, ' ') + 1;
+    argptr = strchr(rctx->uri, '?');
     chkptr = strchr(rctx->uri, ' ');
-    if(chkptr == NULL && (chkptr - rctx->rxbuf.base) >= rctx->rxbuf.end)
+    if(chkptr == NULL) { goto malformed_err; }
+    /* Split argument part of URL. */
+    if(argptr == NULL || argptr > chkptr)
     {
-        goto malformed_err;
+        rctx->arg = chkptr;
+    }
+    else if(argptr)
+    {
+        *argptr++ = 0;
+        rctx->arg = argptr;
     }
     *chkptr = 0;
-    mhttp_urldecode(rctx->uri, (char *) rctx->uri, chkptr+1 - rctx->uri);
+    mhttp_urldecode(rctx->uri, (char *) rctx->uri, rctx->arg+1 - rctx->uri);
     printf("[%zu] URI: %s\n", idx, rctx->uri);
 
     bufidx = (chkptr + 1) - rctx->rxbuf.base;
