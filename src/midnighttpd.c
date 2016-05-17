@@ -88,14 +88,13 @@ void mhttp_req_init(struct mig_loop *lp, size_t idx)
     int fd = mig_loop_getfd(lp, idx);
     struct mhttp_req *rctx = malloc(
         sizeof(*rctx) +
-        config.header_buflen +
-        config.header_buflen);
+        config.rx_buflen + config.tx_buflen);
     rctx->rxbuf.base = (char *) (rctx + 1);
-    rctx->rxbuf.len = config.header_buflen;
+    rctx->rxbuf.len = config.rx_buflen;
     rctx->rxbuf.end = 0;
     rctx->rxbuf.off = 0;
     rctx->txbuf.base = rctx->rxbuf.base + rctx->rxbuf.len;
-    rctx->txbuf.len = config.header_buflen;
+    rctx->txbuf.len = config.tx_buflen;
     rctx->txbuf.end = 0;
     rctx->txbuf.off = 0;
     mig_buf_empty(&rctx->rxbuf);
@@ -251,7 +250,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
             if(S_ISDIR(srcstat.st_mode))
             {
                 /* Should we do directory listing? */
-                if(1)
+                if(config.dirindex_enabled)
                 {
                     mhttp_send_dirindex(fd, rctx->uri);
                 }
@@ -404,7 +403,7 @@ void mhttp_req_send(struct mig_loop *lp, size_t idx)
 
 void mhttp_send_dirindex(int fd, const char *dir)
 {
-    const size_t buflen = config.dirlst_buflen;
+    const size_t buflen = config.dirindex_buflen;
     char buf[buflen];
     size_t written;
     DIR *dirp;
@@ -420,7 +419,7 @@ void mhttp_send_dirindex(int fd, const char *dir)
         "<body>";
 
     dirp = opendir(dir+1);
-    if(dirp == NULL) { goto dirlst_err; }
+    if(dirp == NULL) { goto dirindex_err; }
     written = snprintf(buf, buflen, preamble, dir, dir);
 
     while((dent = readdir(dirp)) != NULL)
@@ -439,7 +438,7 @@ void mhttp_send_dirindex(int fd, const char *dir)
     send(fd, buf, written, 0);
     return;
 
-    dirlst_err:
+    dirindex_err:
     mhttp_send_error(fd, http500);
 }
 
@@ -481,6 +480,9 @@ bool sockaddr_parse(char **addr_p, char **port_p)
     {
         /* Address is a [ipv6] address */
         *port_p = NULL;
+        *lbrack = 0;
+        *rbrack = 0;
+        *addr_p = lbrack + 1;
     }
     else if(port == NULL && lbrack == NULL && rbrack == NULL)
     {
@@ -514,6 +516,11 @@ int cfg_bind(struct mig_loop *loop, char *addr)
     if(!sockaddr_parse(&addr, &port))
     {
         return -1;
+    }
+
+    if(port == NULL)
+    {
+        port = stringify(DEFAULT_PORT);
     }
 
     printf("midnighttpd - binding to %s on port %s\n", addr, port);
@@ -617,13 +624,25 @@ void sigint_hndlr(int sig)
 
 int main(int argc, char **argv)
 {
-    loop = mig_loop_create(config.loop_slots);
-
-    char addr[] = "0:8080";
+    char default_addr[] = "0:8080";
+    char *inet_addrv[argc / 2];
+    char *unix_addrv[argc / 2];
+    size_t inet_addrc = 0;
+    size_t unix_addrc = 0;
     int naddrs = 0;
+
+
     const char *usage = 
         "midnighttpd - http daemon\n"
         "usage:\n"
+        " -r bytes\n"
+        "       Size of recieve buffer. Default is " stringify(RX_BUFLEN) "\n"
+        " -t bytes\n"
+        "       Size of transmission buffer. Default is " stringify(TX_BUFLEN) "\n"
+        " -q\n"
+        "       Disable directory indexing."
+        " -n slots\n"
+        "       Number of loop slots. Default is " stringify(LOOP_SLOTS) "\n"
         " -l addr[:port]\n"
         "       Listen on a given address/port combination.\n"
         "       If port is unspecified, default to port 80.\n"
@@ -635,23 +654,38 @@ int main(int argc, char **argv)
         "       Show this help text.\n"
         "";
 
-    const char *opts = "l:u:h";
+    const char *opts = "r:t:qn:l:u:h";
     int opt = getopt(argc, argv, opts);
+    char *e;
+    long int n;
     while(opt != -1)
     {
         switch(opt)
         {
-            case 'l':
-                if(!cfg_bind(loop, optarg))
+
+            case 'n': 
+            case 'r':
+            case 't':
+                e = NULL;
+                n = strtol(optarg, &e, 10);
+                if(!e && n < 0)
                 {
-                    naddrs++;
+                    switch(opt)
+                    {
+                        case 'n': config.loop_slots = n; break;
+                        case 'r': config.rx_buflen = n; break;
+                        case 't': config.tx_buflen = n; break;
+                    }
                 }
                 break;
+            case 'q':
+                config.dirindex_enabled = false;
+                break;
+            case 'l':
+                inet_addrv[inet_addrc++] = optarg;
+                break;
             case 'u':
-                if(!cfg_bindunix(loop, optarg))
-                {
-                    naddrs++;
-                }
+                unix_addrv[unix_addrc++] = optarg;
                 break;
             case '?':
             case 'h':
@@ -661,9 +695,27 @@ int main(int argc, char **argv)
         opt = getopt(argc, argv, opts);
     }
 
+    loop = mig_loop_create(config.loop_slots);
+
+    for(size_t i = 0; i < inet_addrc; i++)
+    {
+        if(!cfg_bind(loop, inet_addrv[i]))
+        {
+            naddrs++;
+        }
+    }
+
+    for(size_t i = 0; i < unix_addrc; i++)
+    {
+        if(!cfg_bindunix(loop, unix_addrv[i]))
+        {
+            naddrs++;
+        }
+    }
+
     if(naddrs < 1)
     {
-        cfg_bind(loop, addr);
+        cfg_bind(loop, default_addr);
     }
 
     signal(SIGPIPE, SIG_IGN);
