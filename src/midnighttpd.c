@@ -498,6 +498,11 @@ bool sockaddr_parse(char **addr_p, char **port_p)
     return retval;
 }
 
+void close_listen_sock(struct mig_loop *lp, size_t idx)
+{
+    close(mig_loop_getfd(lp, idx));
+}
+
 int cfg_bind(struct mig_loop *loop, char *addr)
 {
     int ncon = 0;
@@ -539,11 +544,12 @@ int cfg_bind(struct mig_loop *loop, char *addr)
         if(bind(servsock, aic->ai_addr, aic->ai_addrlen))
         {
             printf("midnighttpd error - bind: %s\n", strerror(errno));
+            close(servsock);
             aic = aic->ai_next;
             continue;
         }
         listen(servsock, config.loop_slots);
-        mig_loop_register(loop, servsock, mhttp_accept, NULL, MIG_COND_READ, NULL);
+        mig_loop_register(loop, servsock, mhttp_accept, close_listen_sock, MIG_COND_READ, NULL);
         ncon++;
         aic = aic->ai_next;
     }
@@ -551,23 +557,52 @@ int cfg_bind(struct mig_loop *loop, char *addr)
     return ncon > 0 ? 0 : -1;
 }
 
+void close_listen_sockunix(struct mig_loop *lp, size_t idx)
+{
+    char *path = mig_loop_getdata(lp, idx);
+    close(mig_loop_getfd(lp, idx));
+    if(path != NULL)
+    {
+        unlink(path);
+    }
+}
+
 int cfg_bindunix(struct mig_loop *loop, char *path)
 {
     int servsock;
+    struct stat sockstat;
     struct sockaddr_un unixaddr;
     memset(&unixaddr, 0, sizeof(struct sockaddr_un));
     unixaddr.sun_family = AF_UNIX;
     strncpy(unixaddr.sun_path, path, sizeof(((struct sockaddr_un *) NULL)->sun_path) - 1);
     printf("midnighttpd - binding to unix domain socket %s\n", path);
 
+    retry_stat:
+    if(stat(path, &sockstat))
+    {
+        if(errno == EINTR)
+        {
+            goto retry_stat;
+        }
+        else if(errno != ENOENT)
+        {
+            return -1;
+        }
+    }
+    else if(S_ISSOCK(sockstat.st_mode))
+    {
+        unlink(path);
+    }
+
     servsock = socket(AF_UNIX, SOCK_STREAM, 0);
     if(bind(servsock, (struct sockaddr *) &unixaddr, sizeof(struct sockaddr_un)))
     {
         printf("midnighttpd error - bind: %s\n", strerror(errno));
+        close(servsock);
         return -1;
     }
     listen(servsock, config.loop_slots);
-    mig_loop_register(loop, servsock, mhttp_accept, NULL, MIG_COND_READ, NULL);
+    mig_loop_register(loop, servsock, mhttp_accept, close_listen_sockunix, MIG_COND_READ, path);
 
     return 0;
 }
@@ -582,7 +617,7 @@ void sigint_hndlr(int sig)
 
 int main(int argc, char **argv)
 {
-    struct mig_loop *loop = mig_loop_create(config.loop_slots);
+    loop = mig_loop_create(config.loop_slots);
 
     char addr[] = "0:8080";
     int naddrs = 0;
