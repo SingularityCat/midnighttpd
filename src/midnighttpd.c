@@ -18,39 +18,24 @@
 
 #include "mig_core.h"
 #include "mig_io.h"
-#include "mhttp_util.h"
-#include "mhttp_method.h"
-#include "mhttp_range.h"
+#include "mhttp_req.h"
 #include "mhttp_status.h"
 
 #include "midnighttpd_config.h"
 
-struct mhttp_req
-{
-    struct mig_buf rxbuf;
-    struct mig_buf txbuf;
-    enum mhttp_method method;
-    const char *uri;
-    const char *arg;
-    struct mhttp_range range;
-    bool eos;
-    int srcfd;
-    size_t srclen;
-};
-
-void mhttp_req_free(struct mig_loop *lp, size_t idx);
-void mhttp_req_resetctx(struct mhttp_req *rctx);
-void mhttp_req_init(struct mig_loop *lp, size_t idx);
-void mhttp_req_recv(struct mig_loop *lp, size_t idx);
-void mhttp_req_intr(struct mig_loop *lp, size_t idx);
-void mhttp_req_send(struct mig_loop *lp, size_t idx);
+void conn_accept(struct mig_loop *lp, size_t idx);
+void conn_free(struct mig_loop *lp, size_t idx);
+void conn_init(struct mig_loop *lp, size_t idx);
+void conn_recv(struct mig_loop *lp, size_t idx);
+void conn_intr(struct mig_loop *lp, size_t idx);
+void conn_send(struct mig_loop *lp, size_t idx);
 void mhttp_send_dirindex(int fd, const char *dir);
 
-void mhttp_accept(struct mig_loop *lp, size_t idx)
+void conn_accept(struct mig_loop *lp, size_t idx)
 {
     int sock = accept(mig_loop_getfd(lp, idx), NULL, NULL);
     fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | O_NONBLOCK);
-    size_t ni = mig_loop_register(lp, sock, mhttp_req_init, mhttp_req_free, MIG_COND_READ, NULL);
+    size_t ni = mig_loop_register(lp, sock, conn_init, conn_free, MIG_COND_READ, NULL);
     if(ni == (size_t) -1)
     {
         mhttp_send_error(sock, http503);
@@ -61,57 +46,38 @@ void mhttp_accept(struct mig_loop *lp, size_t idx)
     printf("[%zu] Accepting new connection as %zu\n", idx, ni);
 }
 
-void mhttp_req_free(struct mig_loop *lp, size_t idx)
+
+void conn_free(struct mig_loop *lp, size_t idx)
 {
     struct mhttp_req *ctx = mig_loop_getdata(lp, idx);
     if(ctx != NULL)
     {
-        if(ctx->srcfd != -1) { close(ctx->srcfd); }
-        free(ctx);
+        mhttp_req_destroy(ctx);
     }
     close(mig_loop_getfd(lp, idx));
     printf("[%zu] Connection closed.\n", idx);
 }
 
-void mhttp_req_resetctx(struct mhttp_req *rctx)
-{
-    rctx->range.low = 0;
-    rctx->range.high = -1;
-    rctx->range.spec = MHTTP_RANGE_SPEC_NONE;
-    rctx->eos = false;
-    rctx->srcfd = -1;
-    rctx->srclen = 0;
-}
 
-void mhttp_req_init(struct mig_loop *lp, size_t idx)
+void conn_init(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
-    struct mhttp_req *rctx = malloc(
-        sizeof(*rctx) +
-        config.rx_buflen + config.tx_buflen);
-    rctx->rxbuf.base = (char *) (rctx + 1);
-    rctx->rxbuf.len = config.rx_buflen;
-    rctx->rxbuf.end = 0;
-    rctx->rxbuf.off = 0;
-    rctx->txbuf.base = rctx->rxbuf.base + rctx->rxbuf.len;
-    rctx->txbuf.len = config.tx_buflen;
-    rctx->txbuf.end = 0;
-    rctx->txbuf.off = 0;
-    mig_buf_empty(&rctx->rxbuf);
-    mhttp_req_resetctx(rctx);
+    struct mhttp_req *rctx = mhttp_req_create(
+        config.rx_buflen,
+        config.tx_buflen
+    );
+    mhttp_req_reset(rctx);
     mig_loop_setdata(lp, idx, rctx);
-    mig_loop_setcall(lp, idx, mhttp_req_recv);
-    mhttp_req_recv(lp, idx);
+    mig_loop_setcall(lp, idx, conn_recv);
+    conn_recv(lp, idx);
 }
 
 
-void mhttp_req_recv(struct mig_loop *lp, size_t idx)
+void conn_recv(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
-    char *chkptr;
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
     size_t prevend = rctx->rxbuf.end;
-    size_t offset;
 
     if(mig_buf_full(&rctx->rxbuf))
     {
@@ -137,36 +103,27 @@ void mhttp_req_recv(struct mig_loop *lp, size_t idx)
         return;
     }
 
-    /* As we can recv bytes individually, we must check up to the previous 3 bytes as well */
-    offset = prevend < 3 ? prevend : 3;
-    chkptr = memmem(rctx->rxbuf.base + prevend - offset, recvd + offset, "\r\n\r\n", 4);
-
-    if(chkptr != NULL)
+    if(mhttp_req_check(rctx, prevend))
     {
         printf("[%zu] Headers complete.\n", idx);
-        /* Make a null terminated string */
-        *chkptr = 0;
-        /* Set 'offset' of recv buffer to just after the end of this header. */
-        rctx->rxbuf.off = (chkptr - rctx->rxbuf.base) + 4;
         /* switch to intr */
-        mig_loop_setcall(lp, idx, mhttp_req_intr);
+        mig_loop_setcall(lp, idx, conn_intr);
         mig_loop_setcond(lp, idx, MIG_COND_WRITE);
     }
 }
 
-void mhttp_req_intr(struct mig_loop *lp, size_t idx)
+void conn_intr(struct mig_loop *lp, size_t idx)
 {
     int srcfd, fd = mig_loop_getfd(lp, idx);
-    int ret;
-    char *chkptr, *argptr;
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
-    size_t bufidx, sent;
-
     struct stat srcstat;
 
-    /* Analyse client headers */
-    rctx->method = mhttp_interpret_method(rctx->rxbuf.base);
-    if (rctx->method == MHTTP_METHOD_NONE)
+    if(!mhttp_req_parse(rctx))
+    {
+        goto malformed_err;
+    }
+
+    if(rctx->method == MHTTP_METHOD_NONE)
     {
         mhttp_send_error(fd, http501);
         mig_loop_unregister(lp, idx);
@@ -184,45 +141,6 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
             allowed_methods);
         mig_loop_unregister(lp, idx);
         return;
-    }
-
-    rctx->uri = strchr(rctx->rxbuf.base, ' ') + 1;
-    argptr = strchr(rctx->uri, '?');
-    chkptr = strchr(rctx->uri, ' ');
-    if(chkptr == NULL) { goto malformed_err; }
-    /* Split argument part of URL. */
-    if(argptr == NULL || argptr > chkptr)
-    {
-        rctx->arg = chkptr;
-    }
-    else if(argptr)
-    {
-        *argptr++ = 0;
-        rctx->arg = argptr;
-    }
-    *chkptr = 0;
-    mhttp_urldecode(rctx->uri, (char *) rctx->uri, rctx->arg+1 - rctx->uri);
-    printf("[%zu] URI: %s\n", idx, rctx->uri);
-
-    bufidx = (chkptr + 1) - rctx->rxbuf.base;
-
-    chkptr = strstr(rctx->rxbuf.base + bufidx, "\r\n");
-    while(chkptr != NULL)
-    {
-        chkptr += 2; /* Skip crlf */
-        if(strncmp("Connection:", chkptr, 11) == 0)
-        {
-            chkptr += 11;
-            while(*chkptr++ == ' '); /* Skip whitespace */
-            rctx->eos = (strncmp("close", chkptr, 5) == 0);
-        }
-        else if(strncmp("Range:", chkptr, 6) == 0)
-        {
-            chkptr += 6;
-            if(mhttp_parse_range(chkptr, &rctx->range)) { goto malformed_err; }
-        }
-        bufidx = (chkptr - rctx->rxbuf.base);
-        chkptr = strstr(rctx->rxbuf.base + bufidx, "\r\n");
     }
 
     switch(rctx->method)
@@ -323,7 +241,7 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
                 {
                     lseek(srcfd, rctx->range.low, SEEK_SET);
                 }
-                mig_loop_setcall(lp, idx, mhttp_req_send);
+                mig_loop_setcall(lp, idx, conn_send);
             }
             else
             {
@@ -359,13 +277,13 @@ void mhttp_req_intr(struct mig_loop *lp, size_t idx)
     return;
 
     keepalive:
-    mhttp_req_resetctx(rctx);
-    mig_loop_setcall(lp, idx, mhttp_req_recv);
+    mhttp_req_reset(rctx);
+    mig_loop_setcall(lp, idx, conn_recv);
     mig_loop_setcond(lp, idx, MIG_COND_READ);
     return;
 }
 
-void mhttp_req_send(struct mig_loop *lp, size_t idx)
+void conn_send(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
@@ -394,10 +312,10 @@ void mhttp_req_send(struct mig_loop *lp, size_t idx)
         if(rctx->srclen == 0)
         {
             close(rctx->srcfd);
-            mhttp_req_resetctx(rctx);
+            mhttp_req_reset(rctx);
             mig_buf_shift(&rctx->rxbuf);
             mig_buf_empty(&rctx->txbuf);
-            mig_loop_setcall(lp, idx, mhttp_req_recv);
+            mig_loop_setcall(lp, idx, conn_recv);
             mig_loop_setcond(lp, idx, MIG_COND_READ);
         }
         return;
@@ -565,7 +483,7 @@ int cfg_bind(struct mig_loop *loop, char *addr)
             continue;
         }
         listen(servsock, config.loop_slots);
-        mig_loop_register(loop, servsock, mhttp_accept, close_listen_sock, MIG_COND_READ, NULL);
+        mig_loop_register(loop, servsock, conn_accept, close_listen_sock, MIG_COND_READ, NULL);
         ncon++;
         aic = aic->ai_next;
     }
@@ -618,7 +536,7 @@ int cfg_bindunix(struct mig_loop *loop, char *path)
         return -1;
     }
     listen(servsock, config.loop_slots);
-    mig_loop_register(loop, servsock, mhttp_accept, close_listen_sockunix, MIG_COND_READ, path);
+    mig_loop_register(loop, servsock, conn_accept, close_listen_sockunix, MIG_COND_READ, path);
 
     return 0;
 }

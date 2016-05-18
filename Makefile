@@ -7,12 +7,15 @@ CORE_HEADERS=${SRCDIR}/mig_core.h ${SRCDIR}/mig_io.h
 
 MHTTP_SOURCES=\
 ${SRCDIR}/mhttp_util.c\
-${SRCDIR}/mhttp_range.c
+${SRCDIR}/mhttp_range.c\
+${SRCDIR}/mhttp_req.c
+
 MHTTP_HEADERS=\
 ${SRCDIR}/mhttp_util.h\
 ${SRCDIR}/mhttp_range.h\
 ${SRCDIR}/mhttp_method.h\
-${SRCDIR}/mhttp_status.h
+${SRCDIR}/mhttp_status.h\
+${SRCDIR}/mhttp_req.h
 
 all: build
 
