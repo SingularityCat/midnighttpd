@@ -70,9 +70,15 @@ static inline void mig_buf_shift(struct mig_buf *buf)
 }
 
 
-static inline bool mig_buf_full(struct mig_buf *buf)
+static inline bool mig_buf_isfull(struct mig_buf *buf)
 {
     return buf->end >= buf->len;
+}
+
+
+static inline bool mig_buf_isempty(struct mig_buf *buf)
+{
+    return buf->end <= buf->off;
 }
 
 

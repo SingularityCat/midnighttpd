@@ -107,7 +107,7 @@ void conn_recv(struct mig_loop *lp, size_t idx)
         mig_loop_setcall(lp, idx, conn_intr);
         mig_loop_setcond(lp, idx, MIG_COND_WRITE);
     }
-    else if(mig_buf_full(&rctx->rxbuf))
+    else if(mig_buf_isfull(&rctx->rxbuf))
     {
         /* Header too big. This is fatal. */
         mhttp_send_error(fd, http431);
@@ -291,8 +291,9 @@ void conn_send(struct mig_loop *lp, size_t idx)
     ssize_t sent;
 
     /* Check if buffer is empty */
-    if(rctx->txbuf.end == 0)
+    if(mig_buf_isempty(&rctx->txbuf))
     {
+        mig_buf_empty(&rctx->txbuf);
         chunklen = rctx->srclen < rctx->txbuf.len ? rctx->srclen : rctx->txbuf.len;
         sent = mig_buf_read(&rctx->txbuf, rctx->srcfd, rctx->srclen); /* Sent here means amount read. */
         if(sent == -1) { goto io_error; }

@@ -87,7 +87,7 @@ int mig_loop_exec(struct mig_loop *loop)
     struct pollfd *curfdp;
     while(!loop->terminate)
     {
-        if(mig_zstk_full(loop->freestk))
+        if(mig_zstk_isfull(loop->freestk))
         {
             break;
         }

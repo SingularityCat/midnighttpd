@@ -17,7 +17,7 @@ struct mig_zstk {
 #define mig_zstk_push(stk, v) ((stk).top < (stk).len ? ((stk).base[(stk).top++] = v), true : false)
 #define mig_zstk_pop(stk, v_ptr) ((stk).top > 0 ? (*v_ptr = (stk).base[--(stk).top]), true : false)
 #define mig_zstk_free(stk) ((stk).top = 0, (stk).len = 0, free((stk).base))
-#define mig_zstk_full(stk) ((stk).top == (stk).len)
+#define mig_zstk_isfull(stk) ((stk).top == (stk).len)
 
 enum mig_cond {
     MIG_COND_READ  = POLLIN,
