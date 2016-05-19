@@ -26,9 +26,14 @@
 void conn_accept(struct mig_loop *lp, size_t idx);
 void conn_free(struct mig_loop *lp, size_t idx);
 void conn_init(struct mig_loop *lp, size_t idx);
+
 void conn_recv(struct mig_loop *lp, size_t idx);
 void conn_intr(struct mig_loop *lp, size_t idx);
 void conn_send(struct mig_loop *lp, size_t idx);
+
+void conn_keepalive(struct mig_loop *lp, size_t idx, struct mhttp_req *rctx);
+void conn_terminate(struct mig_loop *lp, size_t idx, struct mhttp_req *rctx);
+
 void mhttp_send_dirindex(int fd, const char *dir);
 
 void conn_accept(struct mig_loop *lp, size_t idx)
@@ -79,19 +84,11 @@ void conn_recv(struct mig_loop *lp, size_t idx)
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
     size_t prevend = rctx->rxbuf.end;
 
-    if(mig_buf_full(&rctx->rxbuf))
-    {
-        /* Header too big. This is fatal. */
-        mhttp_send_error(fd, http431);
-        mig_loop_unregister(lp, idx);
-        return;
-    }
-
     size_t recvd = mig_buf_read(&rctx->rxbuf, fd, -1);
     if(recvd == -1)
     {
         printf("[%zu] recv error: %s\n", idx, strerror(errno));
-        mig_loop_unregister(lp, idx);
+        conn_terminate(lp, idx, rctx);
         return;
     }
 
@@ -99,7 +96,7 @@ void conn_recv(struct mig_loop *lp, size_t idx)
     if(recvd == 0)
     {
         printf("[%zu] EOS before headers recv'd.\n", idx);
-        mig_loop_unregister(lp, idx);
+        conn_terminate(lp, idx, rctx);
         return;
     }
 
@@ -109,6 +106,12 @@ void conn_recv(struct mig_loop *lp, size_t idx)
         /* switch to intr */
         mig_loop_setcall(lp, idx, conn_intr);
         mig_loop_setcond(lp, idx, MIG_COND_WRITE);
+    }
+    else if(mig_buf_full(&rctx->rxbuf))
+    {
+        /* Header too big. This is fatal. */
+        mhttp_send_error(fd, http431);
+        conn_terminate(lp, idx, rctx);
     }
 }
 
@@ -126,8 +129,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
     if(rctx->method == MHTTP_METHOD_NONE)
     {
         mhttp_send_error(fd, http501);
-        mig_loop_unregister(lp, idx);
-        return;
+        goto terminate;
     }
     else if (rctx->method & MHTTP_METHOD_UNSUPPORTED)
     {
@@ -139,8 +141,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
             "\r\n",
             http405,
             allowed_methods);
-        mig_loop_unregister(lp, idx);
-        return;
+        goto terminate;
     }
 
     switch(rctx->method)
@@ -262,7 +263,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
             }
             else
             {
-                mig_loop_unregister(lp, idx);
+                goto terminate;
             }
             break;
         default:
@@ -273,13 +274,12 @@ void conn_intr(struct mig_loop *lp, size_t idx)
 
     malformed_err:
     mhttp_send_error(fd, http400);
-    mig_loop_unregister(lp, idx);
+    terminate:
+    conn_terminate(lp, idx, rctx);
     return;
 
     keepalive:
-    mhttp_req_reset(rctx);
-    mig_loop_setcall(lp, idx, conn_recv);
-    mig_loop_setcond(lp, idx, MIG_COND_READ);
+    conn_keepalive(lp, idx, rctx);
     return;
 }
 
@@ -312,11 +312,7 @@ void conn_send(struct mig_loop *lp, size_t idx)
         if(rctx->srclen == 0)
         {
             close(rctx->srcfd);
-            mhttp_req_reset(rctx);
-            mig_buf_shift(&rctx->rxbuf);
-            mig_buf_empty(&rctx->txbuf);
-            mig_loop_setcall(lp, idx, conn_recv);
-            mig_loop_setcond(lp, idx, MIG_COND_READ);
+            conn_keepalive(lp, idx, rctx);
         }
         return;
     }
@@ -325,8 +321,35 @@ void conn_send(struct mig_loop *lp, size_t idx)
      * Note the mhttp_req_free function will close srcfd.
      */
     io_error:
+    conn_terminate(lp, idx, rctx);
+}
+
+
+void conn_keepalive(struct mig_loop *lp, size_t idx, struct mhttp_req *rctx)
+{
+    mhttp_req_reset(rctx);
+    mig_buf_shift(&rctx->rxbuf);
+    mig_buf_empty(&rctx->txbuf);
+    /* Check if there's a complete request queued up. */
+    if(mhttp_req_check(rctx, 0))
+    {
+        mig_loop_setcall(lp, idx, conn_intr);
+        mig_loop_setcond(lp, idx, MIG_COND_WRITE);
+
+    }
+    else
+    {
+        mig_loop_setcall(lp, idx, conn_recv);
+        mig_loop_setcond(lp, idx, MIG_COND_READ);
+    }
+}
+
+
+void conn_terminate(struct mig_loop *lp, size_t idx, struct mhttp_req *rctx)
+{
     mig_loop_unregister(lp, idx);
 }
+
 
 void mhttp_send_dirindex(int fd, const char *dir)
 {
@@ -356,6 +379,7 @@ void mhttp_send_dirindex(int fd, const char *dir)
     }
 
     written += snprintf(buf + written, buflen - written, postamble);
+    closedir(dirp);
 
     dprintf(fd,
         "HTTP/1.1 " http200 "\r\n"
