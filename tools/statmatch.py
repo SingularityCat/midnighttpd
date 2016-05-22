@@ -47,7 +47,7 @@ def wrapmat(tree, toks, mtype, mident, tab="  "):
         print(tab + tok, end="")
     print("\n};\n\n")
 
-    print("static inline enum {0} {1}(const char *str, char * const *osp)".format(mtype, mident))
+    print("static inline enum {0} {1}(const char *str, const char **osp)".format(mtype, mident))
     print("{")
     print(tab + "enum {0} res = 0;".format(mtype))
     print(tab + "char c;")
