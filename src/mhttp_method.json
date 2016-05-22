@@ -1,0 +1,14 @@
+{
+    "guard": "MHTTP_METHOD_H",
+    "enum_name": "mhttp_method",
+    "func_name": "mhttp_match_method",
+    "enumeration": {
+        "MHTTP_METHOD_GET":     "GET",
+        "MHTTP_METHOD_HEAD":    "HEAD",
+        "MHTTP_METHOD_OPTIONS": "OPTIONS",
+        "MHTTP_METHOD_PUT":     "PUT",
+        "MHTTP_METHOD_DELETE":  "DELETE",
+        "MHTTP_METHOD_PATCH":   "PATCH",
+        "MHTTP_METHOD_POST":    "POST"
+    }
+}

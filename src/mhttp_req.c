@@ -88,9 +88,8 @@ bool mhttp_req_parse(struct mhttp_req *req)
     size_t bufidx;
 
     /* Analyse client headers */
-    req->method = mhttp_interpret_method(req->rxbuf.base);
+    req->method = mhttp_match_method(req->rxbuf.base, (const char **) &req->uri);
 
-    req->uri = strchr(req->rxbuf.base, ' ') + 1;
     argptr = strchr(req->uri, '?');
     chkptr = strchr(req->uri, ' ');
     if(chkptr == NULL) { goto malformed; }
