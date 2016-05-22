@@ -1,5 +1,5 @@
-#ifndef MHTTP_STATUS
-#define MHTTP_STATUS
+#ifndef MHTTP_STATUS_H
+#define MHTTP_STATUS_H
 
 #include <stdio.h>
 #include <errno.h>

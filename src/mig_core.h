@@ -1,5 +1,5 @@
-#ifndef MIG_CORE
-#define MIG_CORE
+#ifndef MIG_CORE_H
+#define MIG_CORE_H
 
 #include <stdlib.h>
 #include <stdbool.h>
