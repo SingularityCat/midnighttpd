@@ -126,24 +126,8 @@ void conn_intr(struct mig_loop *lp, size_t idx)
         goto malformed_err;
     }
 
-    if(rctx->method == MHTTP_METHOD_NONE)
-    {
-        mhttp_send_error(fd, http501);
-        goto terminate;
-    }
-    else if (rctx->method & MHTTP_METHOD_UNSUPPORTED)
-    {
-        dprintf(fd,
-            "HTTP/1.1 %s\r\n"
-            SERVER_HEADER
-            "Content-Length: 0\r\n"
-            "Allow: %s\r\n"
-            "\r\n",
-            http405,
-            allowed_methods);
-        goto terminate;
-    }
 
+    const char *allowed_methods = "GET,HEAD,OPTIONS";
     switch(rctx->method)
     {
         case MHTTP_METHOD_GET:
@@ -266,8 +250,21 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                 goto terminate;
             }
             break;
+        case MHTTP_METHOD_PUT:
+        case MHTTP_METHOD_PATCH:
+        case MHTTP_METHOD_DELETE:
+            dprintf(fd,
+                "HTTP/1.1 %s\r\n"
+                SERVER_HEADER
+                "Content-Length: 0\r\n"
+                "Allow: %s\r\n"
+                "\r\n",
+                http405,
+                allowed_methods);
+            goto terminate;
         default:
-            goto malformed_err;
+            mhttp_send_error(fd, http501);
+            goto terminate;
     }
 
     return;
