@@ -574,6 +574,7 @@ void sigint_hndlr(int sig)
 
 int main(int argc, char **argv)
 {
+    int argn = 1;
     char default_addr[] = "0:8080";
     char *inet_addrv[argc / 2];
     char *unix_addrv[argc / 2];
@@ -604,8 +605,17 @@ int main(int argc, char **argv)
         "       Show this help text.\n"
         "";
 
-    const char *opts = "r:t:qn:l:u:h";
-    int opt = getopt(argc, argv, opts);
+    struct mig_optcfg *opts = mig_optcfg_create();
+    mig_setopt(opts, 'r', 1, 0);
+    mig_setopt(opts, 't', 1, 0);
+    mig_setopt(opts, 'n', 1, 0);
+    mig_setopt(opts, 'q', 0, 0);
+    mig_setopt(opts, 'l', 1, 0);
+    mig_setopt(opts, 'u', 1, 0);
+
+    mig_setopt(opts, '?', 0, 0);
+    mig_setopt(opts, 'h', 0, 0);
+    int opt = mig_getopt(opts, &argc, &argv, &argn);
     char *e;
     long int n;
     while(opt != -1)
@@ -617,7 +627,7 @@ int main(int argc, char **argv)
             case 'r':
             case 't':
                 e = NULL;
-                n = strtol(optarg, &e, 10);
+                n = strtol(argv[0], &e, 10);
                 if(!e && n < 0)
                 {
                     switch(opt)
@@ -632,18 +642,20 @@ int main(int argc, char **argv)
                 config.dirindex_enabled = false;
                 break;
             case 'l':
-                inet_addrv[inet_addrc++] = optarg;
+                inet_addrv[inet_addrc++] = argv[0];
                 break;
             case 'u':
-                unix_addrv[unix_addrc++] = optarg;
+                unix_addrv[unix_addrc++] = argv[0];
                 break;
             case '?':
             case 'h':
                 puts(usage);
                 return 1;
         }
-        opt = getopt(argc, argv, opts);
+        opt = mig_getopt(opts, &argc, &argv, &argn);
     }
+
+    mig_optcfg_destroy(opts);
 
     loop = mig_loop_create(config.loop_slots);
 
