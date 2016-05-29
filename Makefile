@@ -2,8 +2,8 @@
 
 SRCDIR=src
 CFLAGS:=${CFLAGS} -I${SRCDIR} -g -pedantic
-CORE_SOURCES=${SRCDIR}/mig_core.c
-CORE_HEADERS=${SRCDIR}/mig_core.h ${SRCDIR}/mig_io.h
+CORE_SOURCES=${SRCDIR}/mig_core.c ${SRCDIR}/mig_opt.c
+CORE_HEADERS=${SRCDIR}/mig_core.h ${SRCDIR}/mig_io.h ${SRCDIR}/mig_opt.h
 
 MHTTP_SOURCES=\
 ${SRCDIR}/mhttp_util.c\

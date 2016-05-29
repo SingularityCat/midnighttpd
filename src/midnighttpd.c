@@ -18,6 +18,7 @@
 
 #include "mig_core.h"
 #include "mig_io.h"
+#include "mig_opt.h"
 #include "mhttp_req.h"
 #include "mhttp_status.h"
 
