@@ -20,13 +20,16 @@ ${SRCDIR}/mhttp_req.h
 all: build
 
 clean:
-	rm -f midnighttpd tchat mig_test
+	rm -f midnighttpd mig_test mot tchat
 
 build: midnighttpd tchat
 
 test:
 mig_test: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/mig_test.c
 	${CC} ${LDFLAGS} ${CFLAGS} -o mig_test testprogs/mig_test.c ${CORE_SOURCES}
+
+mot: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/mot.c
+	${CC} ${LDFLAGS} ${CFLAGS} -o mot testprogs/mot.c ${CORE_SOURCES}
 
 tchat: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/tchat.c
 	${CC} ${LDFLAGS} ${CFLAGS} -o tchat testprogs/tchat.c ${CORE_SOURCES}
