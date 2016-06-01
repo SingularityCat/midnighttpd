@@ -19,8 +19,8 @@ struct mhttp_req
     struct mig_buf rxbuf;
     struct mig_buf txbuf;
     enum mhttp_method method;
-    const char *uri;
-    const char *arg;
+    const char *path;
+    const char *args;
     struct mhttp_range range;
     bool eos;
     int srcfd;

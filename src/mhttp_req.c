@@ -8,8 +8,8 @@
  *     struct mig_buf rxbuf;
  *     struct mig_buf txbuf;
  *     enum mhttp_method method;
- *     const char *uri;
- *     const char *arg;
+ *     const char *path;
+ *     const char *args;
  *     struct mhttp_range range;
  *     bool eos;
  *     int srcfd;
@@ -85,26 +85,29 @@ bool mhttp_req_check(struct mhttp_req *req, size_t offset)
 bool mhttp_req_parse(struct mhttp_req *req)
 {
     char *chkptr, *argptr;
-    size_t bufidx;
+    size_t pathlen, bufidx;
 
     /* Analyse client headers */
-    req->method = mhttp_match_method(req->rxbuf.base, (const char **) &req->uri);
+    req->method = mhttp_match_method(req->rxbuf.base, (const char **) &req->path);
 
-    argptr = strchr(req->uri, '?');
-    chkptr = strchr(req->uri, ' ');
+    argptr = strchr(req->path, '?');
+    chkptr = strchr(req->path, ' ');
     if(chkptr == NULL) { goto malformed; }
     /* Split argument part of URL. */
     if(argptr == NULL || argptr > chkptr)
     {
-        req->arg = chkptr;
+        req->args = chkptr;
+        pathlen = chkptr + 1 - req->path;
     }
     else if(argptr)
     {
         *argptr++ = 0;
-        req->arg = argptr;
+        req->args = argptr;
+        pathlen = argptr - req->path;
     }
     *chkptr = 0;
-    mhttp_urldecode(req->uri, (char *) req->uri, req->arg+1 - req->uri);
+    mhttp_urldecode((char *) req->path, pathlen);
+    *((char *) --req->path) = '.';
 
     bufidx = (chkptr + 1) - req->rxbuf.base;
 
@@ -130,8 +133,8 @@ bool mhttp_req_parse(struct mhttp_req *req)
     return true;
 
     malformed:
-    req->uri = NULL;
-    req->arg = NULL;
+    req->path = NULL;
+    req->args = NULL;
     return false;
 }
 

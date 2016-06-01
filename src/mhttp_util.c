@@ -1,11 +1,13 @@
 #include "mhttp_util.h"
 
-size_t mhttp_urldecode(const char *src, char *dest, size_t lim)
+size_t mhttp_urldecode(char *str, size_t lim)
 {
-    char *end = dest + lim;
+    char *src, *dest;
+    char *end = str + lim;
     char chr, composed;
     int x;
-    if(lim == 0) { return -1; }
+    if(lim == 0 || str == NULL) { return -1; }
+    src = dest = str;
     do
     {
         chr = *src++;

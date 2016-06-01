@@ -21,6 +21,6 @@ static inline int mhttp_char2hex(char chr)
     return n;
 }
 
-size_t mhttp_urldecode(const char *src, char *dest, size_t lim);
+size_t mhttp_urldecode(char *str, size_t lim);
 
 #endif

@@ -24,6 +24,12 @@
 
 #include "midnighttpd_config.h"
 
+#ifdef DEBUG
+    #define debug(fmt, ...) fprintf(stderr, (fmt), (__VA_ARGS__))
+#else
+    #define debug(fmt, ...)
+#endif
+
 void conn_accept(struct mig_loop *lp, size_t idx);
 void conn_free(struct mig_loop *lp, size_t idx);
 void conn_init(struct mig_loop *lp, size_t idx);
@@ -46,10 +52,10 @@ void conn_accept(struct mig_loop *lp, size_t idx)
     {
         mhttp_send_error(sock, http503);
         close(sock);
-        printf("[%zu] Rejecting new connection (no space left).\n", idx);
+        debug("[%zu] Rejecting new connection (no space left).\n", idx);
         return;
     }
-    printf("[%zu] Accepting new connection as %zu\n", idx, ni);
+    debug("[%zu] Accepting new connection as %zu\n", idx, ni);
 }
 
 
@@ -61,7 +67,7 @@ void conn_free(struct mig_loop *lp, size_t idx)
         mhttp_req_destroy(ctx);
     }
     close(mig_loop_getfd(lp, idx));
-    printf("[%zu] Connection closed.\n", idx);
+    debug("[%zu] Connection closed.\n", idx);
 }
 
 
@@ -88,22 +94,22 @@ void conn_recv(struct mig_loop *lp, size_t idx)
     size_t recvd = mig_buf_read(&rctx->rxbuf, fd, -1);
     if(recvd == -1)
     {
-        printf("[%zu] recv error: %s\n", idx, strerror(errno));
+        debug("[%zu] recv error: %s\n", idx, strerror(errno));
         conn_terminate(lp, idx, rctx);
         return;
     }
 
-    printf("[%zu] recv'd %zu bytes of data.\n", idx, recvd);
+    debug("[%zu] recv'd %zu bytes of data.\n", idx, recvd);
     if(recvd == 0)
     {
-        printf("[%zu] EOS before headers recv'd.\n", idx);
+        debug("[%zu] EOS before headers recv'd.\n", idx);
         conn_terminate(lp, idx, rctx);
         return;
     }
 
     if(mhttp_req_check(rctx, prevend))
     {
-        printf("[%zu] Headers complete.\n", idx);
+        debug("[%zu] Headers complete.\n", idx);
         /* switch to intr */
         mig_loop_setcall(lp, idx, conn_intr);
         mig_loop_setcond(lp, idx, MIG_COND_WRITE);
@@ -134,7 +140,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
         case MHTTP_METHOD_GET:
         case MHTTP_METHOD_HEAD:
             retry_stat:
-            if(stat(rctx->uri+1, &srcstat))
+            if(stat(rctx->path, &srcstat))
             {
                 switch(errno)
                 {
@@ -155,7 +161,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                     default:
                         mhttp_send_error(fd, http500);
                 }
-                printf("[%zu] stat error: %s\n", idx, strerror(errno));
+                debug("[%zu] stat error: %s\n", idx, strerror(errno));
                 goto keepalive;
             }
 
@@ -165,7 +171,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                 /* Should we do directory listing? */
                 if(config.dirindex_enabled)
                 {
-                    mhttp_send_dirindex(fd, rctx->uri);
+                    mhttp_send_dirindex(fd, rctx->path);
                 }
                 else
                 {
@@ -222,7 +228,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
             }
             if(rctx->method == MHTTP_METHOD_GET)
             {
-                rctx->srcfd = srcfd = open(rctx->uri+1, 0);
+                rctx->srcfd = srcfd = open(rctx->path, 0);
                 if(rctx->range.spec != MHTTP_RANGE_SPEC_NONE)
                 {
                     lseek(srcfd, rctx->range.low, SEEK_SET);
@@ -326,6 +332,7 @@ void conn_send(struct mig_loop *lp, size_t idx)
 
 void conn_keepalive(struct mig_loop *lp, size_t idx, struct mhttp_req *rctx)
 {
+    printf("[%zu] %s (%s)\n", idx, rctx->path, rctx->args);
     mhttp_req_reset(rctx);
     mig_buf_shift(&rctx->rxbuf);
     mig_buf_empty(&rctx->txbuf);
