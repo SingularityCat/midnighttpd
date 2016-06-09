@@ -2,8 +2,8 @@
 
 SRCDIR=src
 CFLAGS:=${CFLAGS} -I${SRCDIR} -g -pedantic
-CORE_SOURCES=${SRCDIR}/mig_core.c ${SRCDIR}/mig_opt.c
-CORE_HEADERS=${SRCDIR}/mig_core.h ${SRCDIR}/mig_io.h ${SRCDIR}/mig_opt.h
+CORE_SOURCES=${SRCDIR}/mig_core.c ${SRCDIR}/mig_opt.c ${SRCDIR}/mig_radix_tree.c
+CORE_HEADERS=${SRCDIR}/mig_core.h ${SRCDIR}/mig_io.h ${SRCDIR}/mig_opt.h ${SRCDIR}/mig_radix_tree.h
 
 MHTTP_SOURCES=\
 ${SRCDIR}/mhttp_util.c\
@@ -20,7 +20,7 @@ ${SRCDIR}/mhttp_req.h
 all: build
 
 clean:
-	rm -f midnighttpd mig_test mot tchat
+	rm -f midnighttpd mig_test mot mrt tchat
 
 build: midnighttpd tchat
 
@@ -30,6 +30,9 @@ mig_test: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/mig_test.c
 
 mot: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/mot.c
 	${CC} ${LDFLAGS} ${CFLAGS} -o mot testprogs/mot.c ${CORE_SOURCES}
+
+mrt: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/mrt.c
+	${CC} ${LDFLAGS} ${CFLAGS} -o mot testprogs/mrt.c ${CORE_SOURCES}
 
 tchat: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/tchat.c
 	${CC} ${LDFLAGS} ${CFLAGS} -o tchat testprogs/tchat.c ${CORE_SOURCES}

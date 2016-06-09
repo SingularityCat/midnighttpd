@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "mig_radix_tree.h"
@@ -11,18 +12,30 @@ struct mig_radix_node *mig_radix_node_create()
 
 void mig_radix_node_destroy(struct mig_radix_node *node)
 {
+    if(node->segment)
+    {
+        free(node->segment);
+    }
+
+    for(int i = 0; i < 256; i++)
+    {
+        if(node->nodes[i])
+        {
+            mig_radix_node_destroy(node->nodes[i]);
+        }
+    }
     free(node);
 }
 
-struct mig_radix_node **mig_radix_node_find(struct mig_radix_node **root, uint8_t *key, size_t klen, size_t *koffp, size_t *soffp)
+struct mig_radix_node **mig_radix_node_find(struct mig_radix_node **root, uint8_t *key, size_t klen,
+                                            size_t *koffp, size_t *soffp, struct mig_radix_node **prevp)
 {
     uint8_t seg;
     size_t koff = 0, soff;
 
-    struct mig_radix_node *cur, **curp = root;
-    cur = *curp;
+    struct mig_radix_node *prev = NULL, *cur = *root, **curp = root;
 
-    while(cur != NULL && koff < klen)
+    while(cur != NULL)
     {
         soff = 0;
         while(koff < klen && soff < cur->seglen && key[koff] == cur->segment[soff])
@@ -34,6 +47,7 @@ struct mig_radix_node **mig_radix_node_find(struct mig_radix_node **root, uint8_
         if(soff == cur->seglen && koff < klen)
         {
             curp = &cur->nodes[key[koff++]];
+            prev = cur;
             cur = *curp;
         }
         else
@@ -50,6 +64,10 @@ struct mig_radix_node **mig_radix_node_find(struct mig_radix_node **root, uint8_
     {
         *soffp = soff;
     }
+    if(prevp)
+    {
+        *prevp = prev;
+    }
     return curp;
 }
 
@@ -60,11 +78,17 @@ struct mig_radix_tree *mig_radix_tree_create()
     return tree;
 }
 
+void mig_radix_tree_destroy(struct mig_radix_tree *tree)
+{
+    mig_radix_node_destroy(tree->root);
+    free(tree);
+}
+
 void mig_radix_tree_insert(struct mig_radix_tree *tree, uint8_t *key, size_t klen, void *value)
 {
     uint8_t seg;
     size_t koffset, soffset;
-    struct mig_radix_node *new, **lmp = mig_radix_node_find(&tree->root, key, klen, &koffset, &soffset);
+    struct mig_radix_node *new, **lmp = mig_radix_node_find(&tree->root, key, klen, &koffset, &soffset, NULL);
 
     new = mig_radix_node_create();
     if(!new)
@@ -101,25 +125,19 @@ void mig_radix_tree_insert(struct mig_radix_tree *tree, uint8_t *key, size_t kle
 
 void *mig_radix_tree_lookup(struct mig_radix_tree *tree, uint8_t *key, size_t klen)
 {
-    struct mig_radix_node *lkn = *mig_radix_node_find(&tree->root, key, klen, NULL, NULL);
-    return lkn ? lkn->value : NULL;
+    size_t soffset;
+    struct mig_radix_node *lkn = *mig_radix_node_find(&tree->root, key, klen, NULL, &soffset, NULL);
+    return lkn && soffset == lkn->seglen ? lkn->value : NULL;
 }
 
-#define mig_radix_tree_insert_s(t, k, v) (mig_radix_tree_insert((t), (k), strlen(k), (v)))
-#define mig_radix_tree_lookup_s(t, k) (mig_radix_tree_lookup((t), (k), strlen(k)))
-
-int main()
+void *mig_radix_tree_lpm(struct mig_radix_tree *tree, uint8_t *key, size_t klen)
 {
-    void *v;
-    struct mig_radix_tree *t = mig_radix_tree_create();
-    mig_radix_tree_insert_s(t, "cat", (void *) 0x10);
-    mig_radix_tree_insert_s(t, "catastrophe", (void *) 0x20);
-    mig_radix_tree_insert_s(t, "cape", (void *) 0x30);
-    mig_radix_tree_insert_s(t, "capricorn", (void *) 0x40);
-
-    v = mig_radix_tree_lookup_s(t, "cat");
-    v = mig_radix_tree_lookup_s(t, "cape");
-    v = mig_radix_tree_lookup_s(t, "catastrophe");
-    v = mig_radix_tree_lookup_s(t, "catastro");
+    size_t soffset;
+    struct mig_radix_node *prp, *lkn = *mig_radix_node_find(&tree->root, key, klen, NULL, &soffset, &prp);
+    if(!lkn || soffset < lkn->seglen)
+    {
+        lkn = prp;
+    }
+    return lkn ? lkn->value : NULL;
 }
 

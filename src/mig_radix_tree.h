@@ -19,4 +19,16 @@ struct mig_radix_tree
     struct mig_radix_node *root;
 };
 
+struct mig_radix_node *mig_radix_node_create(void);
+void mig_radix_node_destroy(struct mig_radix_node *node);
+struct mig_radix_node **mig_radix_node_find(struct mig_radix_node **root, uint8_t *key, size_t klen,
+                                            size_t *koffp, size_t *soffp, struct mig_radix_node **prevp);
+
+struct mig_radix_tree *mig_radix_tree_create(void);
+void mig_radix_tree_destroy(struct mig_radix_tree *tree);
+void mig_radix_tree_insert(struct mig_radix_tree *tree, uint8_t *key, size_t klen, void *value);
+void mig_radix_tree_remove(struct mig_radix_tree *tree, uint8_t *key, size_t klen);
+void *mig_radix_tree_lookup(struct mig_radix_tree *tree, uint8_t *key, size_t klen);
+void *mig_radix_tree_lpm(struct mig_radix_tree *tree, uint8_t *key, size_t klen);
+
 #endif
