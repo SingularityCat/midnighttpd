@@ -5,5 +5,7 @@ struct midnighttpd_config config  = {
     RX_BUFLEN,
     TX_BUFLEN,
     DIRINDEX_STATE,
-    DIRINDEX_BUFLEN
+    DIRINDEX_BUFLEN,
+    NULL,
+    DEFAULT_MIMETYPE
 };
