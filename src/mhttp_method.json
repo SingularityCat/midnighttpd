@@ -2,6 +2,7 @@
     "guard": "MHTTP_METHOD_H",
     "enum_name": "mhttp_method",
     "func_name": "mhttp_match_method",
+    "rfunc_name": "mhttp_str_method",
     "enumeration": {
         "MHTTP_METHOD_GET":     "GET",
         "MHTTP_METHOD_HEAD":    "HEAD",
