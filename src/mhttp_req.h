@@ -11,6 +11,7 @@
 #include "mig_core.h"
 #include "mig_io.h"
 #include "mhttp_util.h"
+#include "mhttp_status.h"
 #include "mhttp_method.h"
 #include "mhttp_range.h"
 
@@ -18,6 +19,7 @@ struct mhttp_req
 {
     struct mig_buf rxbuf;
     struct mig_buf txbuf;
+    enum mhttp_version version;
     enum mhttp_method method;
     const char *path;
     const char *args;

@@ -12,6 +12,8 @@
 #define expcat(a, b) inner_expcat(a, b)
 #define inner_expcat(a, b) a ## b
 
+#define http_v1_0 "HTTP/1.0"
+#define http_v1_1 "HTTP/1.1"
 
 #define http200 "200 OK"
 #define http204 "204 No content"
@@ -28,15 +30,31 @@
 #define http503 "503 Service Unavailable"
 #define http508 "508 Loop Detected"
 
+enum mhttp_version
+{
+    MHTTP_VERSION_1_0 = 10,
+    MHTTP_VERSION_1_1 = 11
+};
+
+#define mhttp_str_ver(ver) \
+    ((ver) == MHTTP_VERSION_1_1 ? http_v1_1 : http_v1_0)
+
+
+#define mhttp_send_ver(fd, ver) \
+    ((ver) == MHTTP_VERSION_1_1 ? \
+        mig_unintr_write(fd, http_v1_1, sizeof(http_v1_1)) :\
+        mig_unintr_write(fd, http_v1_0, sizeof(http_v1_0)))
+
 
 #define mhttp_error_resp(error) \
-    ("HTTP/1.1 " error "\r\n"\
+    (" " error "\r\n"\
      SERVER_HEADER\
      "Content-Length: 0\r\n"\
      "\r\n")
 
 
-#define mhttp_send_error(fd, error) \
+#define mhttp_send_error(fd, ver, error) \
+    mhttp_send_ver(fd, ver) + \
     mig_unintr_write(fd, mhttp_error_resp(error),\
         sizeof(mhttp_error_resp(error)))
 

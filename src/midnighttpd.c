@@ -38,10 +38,9 @@ void conn_recv(struct mig_loop *lp, size_t idx);
 void conn_intr(struct mig_loop *lp, size_t idx);
 void conn_send(struct mig_loop *lp, size_t idx);
 
-void conn_keepalive(struct mig_loop *lp, size_t idx, struct mhttp_req *rctx);
-void conn_terminate(struct mig_loop *lp, size_t idx, struct mhttp_req *rctx);
+void req_terminate(struct mig_loop *lp, size_t idx, struct mhttp_req *req);
 
-void mhttp_send_dirindex(int fd, const char *dir);
+void mhttp_send_dirindex(int fd, struct mhttp_req *rctx);
 
 void conn_accept(struct mig_loop *lp, size_t idx)
 {
@@ -50,7 +49,7 @@ void conn_accept(struct mig_loop *lp, size_t idx)
     size_t ni = mig_loop_register(lp, sock, conn_init, conn_free, MIG_COND_READ, NULL);
     if(ni == (size_t) -1)
     {
-        mhttp_send_error(sock, http503);
+        mhttp_send_error(sock, MHTTP_VERSION_1_0, http503);
         close(sock);
         debug("[%zu] Rejecting new connection (no space left).\n", idx);
         return;
@@ -95,7 +94,8 @@ void conn_recv(struct mig_loop *lp, size_t idx)
     if(recvd == -1)
     {
         debug("[%zu] recv error: %s\n", idx, strerror(errno));
-        conn_terminate(lp, idx, rctx);
+        rctx->eos = true;
+        req_terminate(lp, idx, rctx);
         return;
     }
 
@@ -103,7 +103,8 @@ void conn_recv(struct mig_loop *lp, size_t idx)
     if(recvd == 0)
     {
         debug("[%zu] EOS before headers recv'd.\n", idx);
-        conn_terminate(lp, idx, rctx);
+        rctx->eos = true;
+        req_terminate(lp, idx, rctx);
         return;
     }
 
@@ -117,8 +118,9 @@ void conn_recv(struct mig_loop *lp, size_t idx)
     else if(mig_buf_isfull(&rctx->rxbuf))
     {
         /* Header too big. This is fatal. */
-        mhttp_send_error(fd, http431);
-        conn_terminate(lp, idx, rctx);
+        mhttp_send_error(fd, rctx->version, http431);
+        rctx->eos = true;
+        req_terminate(lp, idx, rctx);
     }
 }
 
@@ -147,22 +149,22 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                     case EINTR:
                         goto retry_stat;
                     case ENAMETOOLONG:
-                        mhttp_send_error(fd, http414);
+                        mhttp_send_error(fd, rctx->version, http414);
                         break;
                     case EACCES:
-                        mhttp_send_error(fd, http403);
+                        mhttp_send_error(fd, rctx->version, http403);
                         break;
                     case ENOENT:
-                        mhttp_send_error(fd, http404);
+                        mhttp_send_error(fd, rctx->version, http404);
                         break;
                     case ELOOP:
-                        mhttp_send_error(fd, http508);
+                        mhttp_send_error(fd, rctx->version, http508);
                         break;
                     default:
-                        mhttp_send_error(fd, http500);
+                        mhttp_send_error(fd, rctx->version, http500);
                 }
                 debug("[%zu] stat error: %s\n", idx, strerror(errno));
-                goto keepalive;
+                break;
             }
 
             /* Test if we're a directory. */
@@ -171,13 +173,13 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                 /* Should we do directory listing? */
                 if(config.dirindex_enabled)
                 {
-                    mhttp_send_dirindex(fd, rctx->path);
+                    mhttp_send_dirindex(fd, rctx);
                 }
                 else
                 {
-                    mhttp_send_error(fd, http403);
+                    mhttp_send_error(fd, rctx->version, http403);
                 }
-                goto keepalive;
+                break;
             }
 
             /* Range checking logic:
@@ -191,13 +193,13 @@ void conn_intr(struct mig_loop *lp, size_t idx)
             if(rctx->range.low >= srcstat.st_size)
             {
                 dprintf(fd,
-                    "HTTP/1.1 " http416 "\r\n"
+                    "%s " http416 "\r\n"
                     SERVER_HEADER
                     "Content-Length: 0\r\n"
                     "Content-Range: */%zu\r\n"
-                    "\r\n",
+                    "\r\n", mhttp_str_ver(rctx->version),
                     (size_t) srcstat.st_size);
-                goto keepalive;
+                break;
             }
             if(rctx->range.high >= srcstat.st_size)
             {
@@ -208,11 +210,11 @@ void conn_intr(struct mig_loop *lp, size_t idx)
             {
                 rctx->srclen = rctx->range.high - rctx->range.low;
                 dprintf(fd,
-                    "HTTP/1.1 " http206 "\r\n"
+                    "%s " http206 "\r\n"
                     SERVER_HEADER
                     "Content-Length: %zu\r\n"
                     "Content-Range: bytes %zu-%zu/%zu\r\n"
-                    "\r\n",
+                    "\r\n", mhttp_str_ver(rctx->version),
                     rctx->srclen,
                     rctx->range.low, rctx->range.high, (size_t) srcstat.st_size);
             }
@@ -220,10 +222,10 @@ void conn_intr(struct mig_loop *lp, size_t idx)
             {
                 rctx->srclen = srcstat.st_size;
                 dprintf(fd,
-                    "HTTP/1.1 " http200 "\r\n"
+                    "%s " http200 "\r\n"
                     SERVER_HEADER
                     "Content-Length: %zu\r\n"
-                    "\r\n",
+                    "\r\n", mhttp_str_ver(rctx->version),
                     srcstat.st_size);
             }
             if(rctx->method == MHTTP_METHOD_GET)
@@ -234,56 +236,40 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                     lseek(srcfd, rctx->range.low, SEEK_SET);
                 }
                 mig_loop_setcall(lp, idx, conn_send);
-            }
-            else
-            {
-                goto keepalive;
+                return;
             }
             break;
         case MHTTP_METHOD_OPTIONS:
             dprintf(fd,
-                "HTTP/1.1 %s\r\n"
+                "%s " http204 "\r\n"
                 SERVER_HEADER
                 "Allow: %s\r\n"
-                "\r\n",
-                http204,
+                "\r\n", mhttp_str_ver(rctx->version),
                 allowed_methods);
-            if(!rctx->eos)
-            {
-                goto keepalive;
-            }
-            else
-            {
-                goto terminate;
-            }
             break;
         case MHTTP_METHOD_PUT:
         case MHTTP_METHOD_PATCH:
         case MHTTP_METHOD_DELETE:
             dprintf(fd,
-                "HTTP/1.1 %s\r\n"
+                "%s " http405 "\r\n"
                 SERVER_HEADER
                 "Content-Length: 0\r\n"
                 "Allow: %s\r\n"
-                "\r\n",
-                http405,
+                "\r\n", mhttp_str_ver(rctx->version),
                 allowed_methods);
-            goto terminate;
+            break;
         default:
-            mhttp_send_error(fd, http501);
-            goto terminate;
+            mhttp_send_error(fd, rctx->version, http501);
+            rctx->eos = true;
+            break;
     }
-
-    return;
+    goto terminate;
 
     malformed_err:
-    mhttp_send_error(fd, http400);
+    mhttp_send_error(fd, rctx->version, http400);
+    rctx->eos = true;
     terminate:
-    conn_terminate(lp, idx, rctx);
-    return;
-
-    keepalive:
-    conn_keepalive(lp, idx, rctx);
+    req_terminate(lp, idx, rctx);
     return;
 }
 
@@ -317,7 +303,7 @@ void conn_send(struct mig_loop *lp, size_t idx)
         if(rctx->srclen == 0)
         {
             close(rctx->srcfd);
-            conn_keepalive(lp, idx, rctx);
+            req_terminate(lp, idx, rctx);
         }
         return;
     }
@@ -326,18 +312,28 @@ void conn_send(struct mig_loop *lp, size_t idx)
      * Note the mhttp_req_free function will close srcfd.
      */
     io_error:
-    conn_terminate(lp, idx, rctx);
+    rctx->eos = true;
+    req_terminate(lp, idx, rctx);
 }
 
 
-void conn_keepalive(struct mig_loop *lp, size_t idx, struct mhttp_req *rctx)
+void req_terminate(struct mig_loop *lp, size_t idx, struct mhttp_req *req)
 {
-    printf("[%zu] %s (%s)\n", idx, rctx->path, rctx->args);
-    mhttp_req_reset(rctx);
-    mig_buf_shift(&rctx->rxbuf);
-    mig_buf_empty(&rctx->txbuf);
+    printf("[%zu] %s %s %s (%s)\n", idx, mhttp_str_ver(req->version), mhttp_str_method(req->method), req->path, req->args);
+
+    if(req->eos)
+    {
+        /* close */
+        mig_loop_unregister(lp, idx);
+        return;
+    }
+
+    /* keepalive */
+    mhttp_req_reset(req);
+    mig_buf_shift(&req->rxbuf);
+    mig_buf_empty(&req->txbuf);
     /* Check if there's a complete request queued up. */
-    if(mhttp_req_check(rctx, 0))
+    if(mhttp_req_check(req, 0))
     {
         mig_loop_setcall(lp, idx, conn_intr);
         mig_loop_setcond(lp, idx, MIG_COND_WRITE);
@@ -351,17 +347,12 @@ void conn_keepalive(struct mig_loop *lp, size_t idx, struct mhttp_req *rctx)
 }
 
 
-void conn_terminate(struct mig_loop *lp, size_t idx, struct mhttp_req *rctx)
-{
-    mig_loop_unregister(lp, idx);
-}
-
-
-void mhttp_send_dirindex(int fd, const char *dir)
+void mhttp_send_dirindex(int fd, struct mhttp_req *rctx)
 {
     const size_t buflen = config.dirindex_buflen;
     char buf[buflen];
     size_t written;
+    const char *dir = rctx->path;
     DIR *dirp;
     struct dirent *dent;
 
@@ -374,7 +365,7 @@ void mhttp_send_dirindex(int fd, const char *dir)
             "</ul>"
         "<body>";
 
-    dirp = opendir(dir+1);
+    dirp = opendir(dir);
     if(dirp == NULL) { goto dirindex_err; }
     written = snprintf(buf, buflen, preamble, dir, dir);
 
@@ -388,15 +379,15 @@ void mhttp_send_dirindex(int fd, const char *dir)
     closedir(dirp);
 
     dprintf(fd,
-        "HTTP/1.1 " http200 "\r\n"
+        "%s " http200 "\r\n"
         SERVER_HEADER
         "Content-Length: %zu\r\n"
-        "\r\n", written);
+        "\r\n", mhttp_str_ver(rctx->version), written);
     send(fd, buf, written, 0);
     return;
 
     dirindex_err:
-    mhttp_send_error(fd, http500);
+    mhttp_send_error(fd, rctx->version, http500);
 }
 
 /* Socket addresses have the form:

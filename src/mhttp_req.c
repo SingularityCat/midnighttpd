@@ -7,6 +7,7 @@
  * {
  *     struct mig_buf rxbuf;
  *     struct mig_buf txbuf;
+ *     enum mhttp_version version;
  *     enum mhttp_method method;
  *     const char *path;
  *     const char *args;
@@ -32,6 +33,8 @@ struct mhttp_req *mhttp_req_create(size_t rxlen, size_t txlen)
     req->txbuf.len = txlen;
     mig_buf_empty(&req->rxbuf);
     mig_buf_empty(&req->txbuf);
+    req->version = MHTTP_VERSION_1_0;
+    req->eos = true;
     mhttp_req_reset(req);
     /* A single null byte to cap the buffers. */
     *(req->txbuf.base + req->txbuf.len) = 0;
@@ -56,7 +59,6 @@ void mhttp_req_reset(struct mhttp_req *req)
     req->range.low = 0;
     req->range.high = -1;
     req->range.spec = MHTTP_RANGE_SPEC_NONE;
-    req->eos = false;
     req->srcfd = -1;
     req->srclen = 0;
 }
@@ -105,9 +107,22 @@ bool mhttp_req_parse(struct mhttp_req *req)
         req->args = argptr;
         pathlen = argptr - req->path;
     }
-    *chkptr = 0;
+    *chkptr++ = 0;
     mhttp_urldecode((char *) req->path, pathlen);
+    mhttp_scrubpath((char *) req->path, false, NULL);
     *((char *) --req->path) = '.';
+
+    /* Get HTTP version and set version specific defaults appropriately */
+    if(strncmp(http_v1_1, chkptr, sizeof(http_v1_1) - 1) == 0)
+    {
+            req->version = MHTTP_VERSION_1_1;
+            req->eos = false;
+    }
+    else
+    {
+            req->version = MHTTP_VERSION_1_0;
+            req->eos = true;
+    }
 
     bufidx = (chkptr + 1) - req->rxbuf.base;
 
@@ -119,7 +134,14 @@ bool mhttp_req_parse(struct mhttp_req *req)
         {
             chkptr += 11;
             while(*chkptr++ == ' '); /* Skip whitespace */
-            req->eos = (strncmp("close", chkptr, 5) == 0);
+            if(strncmp("close", chkptr, 5) == 0)
+            {
+                req->eos = true;
+            }
+            else if(strncmp("keepalive", chkptr, 9) == 0)
+            {
+                req->eos = false;
+            }
         }
         else if(strncmp("Range:", chkptr, 6) == 0)
         {
