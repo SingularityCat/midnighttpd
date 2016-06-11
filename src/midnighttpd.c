@@ -136,6 +136,34 @@ void conn_intr(struct mig_loop *lp, size_t idx)
     }
 
 
+
+    const char *mimetype = NULL;
+
+    /* Find path extension */
+    const char *ext = NULL, *ptr = rctx->path;
+    while(*ptr)
+    {
+        switch(*ptr)
+        {
+            case '.':
+                ext = ptr + 1;
+                break;
+            case '/':
+                ext = NULL;
+                break;
+        }
+        ptr++;
+    }
+
+    if(ext)
+    {
+        mimetype = mig_radix_tree_lookup(config.mimetypes, (const uint8_t *) ext, ptr - ext);
+    }
+    if(!mimetype)
+    {
+        mimetype = config.default_mimetype;
+    }
+
     const char *allowed_methods = "GET,HEAD,OPTIONS";
     switch(rctx->method)
     {
@@ -197,8 +225,10 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                     SERVER_HEADER
                     "Content-Length: 0\r\n"
                     "Content-Range: */%zu\r\n"
+                    "Content-Type: %s\r\n"
                     "\r\n", mhttp_str_ver(rctx->version),
-                    (size_t) srcstat.st_size);
+                    (size_t) srcstat.st_size,
+                    mimetype);
                 break;
             }
             if(rctx->range.high >= srcstat.st_size)
@@ -214,9 +244,11 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                     SERVER_HEADER
                     "Content-Length: %zu\r\n"
                     "Content-Range: bytes %zu-%zu/%zu\r\n"
+                    "Content-Type: %s\r\n"
                     "\r\n", mhttp_str_ver(rctx->version),
                     rctx->srclen,
-                    rctx->range.low, rctx->range.high, (size_t) srcstat.st_size);
+                    rctx->range.low, rctx->range.high, (size_t) srcstat.st_size,
+                    mimetype);
             }
             else
             {
@@ -225,8 +257,10 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                     "%s " http200 "\r\n"
                     SERVER_HEADER
                     "Content-Length: %zu\r\n"
+                    "Content-Type: %s\r\n"
                     "\r\n", mhttp_str_ver(rctx->version),
-                    srcstat.st_size);
+                    srcstat.st_size,
+                    mimetype);
             }
             if(rctx->method == MHTTP_METHOD_GET)
             {
@@ -298,19 +332,14 @@ void conn_send(struct mig_loop *lp, size_t idx)
     sent = mig_buf_write(&rctx->txbuf, fd, -1);
     if(sent == -1) { goto io_error; }
 
-    if(!rctx->eos)
+    if(rctx->srclen == 0)
     {
-        if(rctx->srclen == 0)
-        {
-            close(rctx->srcfd);
-            req_terminate(lp, idx, rctx);
-        }
-        return;
+        close(rctx->srcfd);
+        req_terminate(lp, idx, rctx);
     }
+    return;
 
-    /* Reached if there's an IO error or this is the end of the stream.
-     * Note the mhttp_req_free function will close srcfd.
-     */
+    /* Reached if there's an IO error. mhttp_req_free function will close srcfd. */
     io_error:
     rctx->eos = true;
     req_terminate(lp, idx, rctx);
@@ -382,6 +411,7 @@ void mhttp_send_dirindex(int fd, struct mhttp_req *rctx)
         "%s " http200 "\r\n"
         SERVER_HEADER
         "Content-Length: %zu\r\n"
+        "Content-Type: text/html\r\n"
         "\r\n", mhttp_str_ver(rctx->version), written);
     send(fd, buf, written, 0);
     return;
@@ -580,18 +610,15 @@ int main(int argc, char **argv)
     size_t unix_addrc = 0;
     int naddrs = 0;
 
+    config.mimetypes = mig_radix_tree_create();
 
     const char *usage = 
         "midnighttpd - http daemon\n"
         "usage:\n"
-        " -r bytes\n"
-        "       Size of recieve buffer. Default is " stringify(RX_BUFLEN) "\n"
-        " -t bytes\n"
-        "       Size of transmission buffer. Default is " stringify(TX_BUFLEN) "\n"
+        " -M mimetype\n"
+        "       Set default mimetype. Default is " DEFAULT_MIMETYPE "\n"
         " -q\n"
         "       Disable directory indexing."
-        " -n slots\n"
-        "       Number of loop slots. Default is " stringify(LOOP_SLOTS) "\n"
         " -l addr[:port]\n"
         "       Listen on a given address/port combination.\n"
         "       If port is unspecified, default to port 80.\n"
@@ -599,17 +626,26 @@ int main(int argc, char **argv)
         "       surrounded by [square brackets]. e.g. [::1]\n"
         " -u unixaddr\n"
         "       Listen on a unix domain socket\n"
+        " -r bytes\n"
+        "       Size of recieve buffer. Default is " stringify(RX_BUFLEN) "\n"
+        " -t bytes\n"
+        "       Size of transmission buffer. Default is " stringify(TX_BUFLEN) "\n"
+        " -n slots\n"
+        "       Number of loop slots. Default is " stringify(LOOP_SLOTS) "\n"
         " -h, -?\n"
         "       Show this help text.\n"
         "";
 
     struct mig_optcfg *opts = mig_optcfg_create();
-    mig_setopt(opts, 'r', 1, 0);
-    mig_setopt(opts, 't', 1, 0);
-    mig_setopt(opts, 'n', 1, 0);
+
+    mig_setopt(opts, 'M', 1, 0);
     mig_setopt(opts, 'q', 0, 0);
     mig_setopt(opts, 'l', 1, 0);
     mig_setopt(opts, 'u', 1, 0);
+
+    mig_setopt(opts, 'r', 1, 0);
+    mig_setopt(opts, 't', 1, 0);
+    mig_setopt(opts, 'n', 1, 0);
 
     mig_setopt(opts, '?', 0, 0);
     mig_setopt(opts, 'h', 0, 0);
@@ -620,7 +656,18 @@ int main(int argc, char **argv)
     {
         switch(opt)
         {
-
+            case 'M':
+                config.default_mimetype = argv[0];
+                break;
+            case 'q':
+                config.dirindex_enabled = false;
+                break;
+            case 'l':
+                inet_addrv[inet_addrc++] = argv[0];
+                break;
+            case 'u':
+                unix_addrv[unix_addrc++] = argv[0];
+                break;
             case 'n': 
             case 'r':
             case 't':
@@ -635,15 +682,6 @@ int main(int argc, char **argv)
                         case 't': config.tx_buflen = n; break;
                     }
                 }
-                break;
-            case 'q':
-                config.dirindex_enabled = false;
-                break;
-            case 'l':
-                inet_addrv[inet_addrc++] = argv[0];
-                break;
-            case 'u':
-                unix_addrv[unix_addrc++] = argv[0];
                 break;
             case '?':
             case 'h':
@@ -688,5 +726,7 @@ int main(int argc, char **argv)
         return -1;
     }
     mig_loop_destroy(loop);
+
+    mig_radix_tree_destroy(config.mimetypes);
     return 0;
 }
