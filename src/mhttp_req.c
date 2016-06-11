@@ -59,6 +59,9 @@ void mhttp_req_reset(struct mhttp_req *req)
     req->range.low = 0;
     req->range.high = -1;
     req->range.spec = MHTTP_RANGE_SPEC_NONE;
+    req->method = 0;
+    req->path = 0;
+    req->args = 0;
     req->srcfd = -1;
     req->srclen = 0;
 }
