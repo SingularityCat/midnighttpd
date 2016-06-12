@@ -615,6 +615,8 @@ int main(int argc, char **argv)
     const char *usage = 
         "midnighttpd - http daemon\n"
         "usage:\n"
+        " -m mimetype [extension ...]\n"
+        "       Set a mimetype for a given list of extensions\n"
         " -M mimetype\n"
         "       Set default mimetype. Default is " DEFAULT_MIMETYPE "\n"
         " -q\n"
@@ -638,6 +640,7 @@ int main(int argc, char **argv)
 
     struct mig_optcfg *opts = mig_optcfg_create();
 
+    mig_setopt(opts, 'm', 1, -1);
     mig_setopt(opts, 'M', 1, 0);
     mig_setopt(opts, 'q', 0, 0);
     mig_setopt(opts, 'l', 1, 0);
@@ -656,6 +659,14 @@ int main(int argc, char **argv)
     {
         switch(opt)
         {
+            case 'm':
+                e = argv[0];
+                for(int i = 1; i < argn; i++)
+                {
+                    mig_radix_tree_insert(config.mimetypes,
+                        (uint8_t *) argv[i], strlen(argv[i]), e);
+                }
+                break;
             case 'M':
                 config.default_mimetype = argv[0];
                 break;

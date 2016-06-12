@@ -7,8 +7,8 @@ struct mig_optcfg
 {
     struct
     {
-        int mandatory;
-        int optional;
+        unsigned int mandatory;
+        unsigned int optional;
     } opts[128];
 };
 
@@ -25,6 +25,7 @@ void mig_optcfg_destroy(struct mig_optcfg *o)
 
 void mig_setopt(struct mig_optcfg *o, char opt, int m_cnt, int o_cnt)
 {
+    opt &= 0x7F;
     o->opts[opt].mandatory = m_cnt;
     o->opts[opt].optional = o_cnt;
 }
@@ -51,21 +52,21 @@ int mig_getopt(struct mig_optcfg *o, int *argcp, char ***argvp, int *argnp)
         return -1;
     }
 
-    int offset = *argnp;
+    unsigned int offset = *argnp, lim;
     char **argv = *argvp + offset;
     char *arg = *argv;
-    int lim, opt;
+    int opt;
 
     *argvp = argv + 1;
     *argcp -= offset + 1;
-    offset = 0;
     opt = arg[0];
+    offset = o->opts[opt].mandatory;
 
     if(opt == '-')
     {
-        opt = arg[1];
-        offset += o->opts[opt].mandatory;
-        lim = offset + o->opts[opt].optional;
+        opt = arg[1] & 0x7F;
+        lim = o->opts[opt].optional;
+        lim = lim > offset || lim == 0 ? lim : -1;
         lim = lim < *argcp ? lim : *argcp;
         for(argv++; offset < lim; offset++)
         {
