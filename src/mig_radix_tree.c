@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "mig_radix_tree.h"
@@ -89,34 +90,76 @@ void mig_radix_tree_destroy(struct mig_radix_tree *tree)
 
 void mig_radix_tree_insert(struct mig_radix_tree *tree, const uint8_t *key, size_t klen, void *value)
 {
-    uint8_t seg;
     size_t koffset, soffset;
     struct mig_radix_node *new, **lmp = mig_radix_node_find(&tree->root, key, klen, &koffset, &soffset, NULL);
 
-    new = mig_radix_node_create();
-    if(!new)
-    {
-        return;
-    }
+    /* There are three possible cases we need to handle:
+     * 1) A key is a superset of an existing key path. e.g:
+     *      [root] --nav--> [null]
+     *    Adding "navigation",
+     *      [root] --nav--> i --gation--> [null]
+     *
+     * 2) A key is a subset of an existing key path. e.g:
+     *      [root] --navigation--> [null]
+     *    Adding "nav",
+     *      [root] --nav--> i --gation--> [null]
+     *
+     * 3) A key intersects with an existing key path. e.g:
+     *      [root] --nav--> i --gation--> [null]
+     *    Adding "navigator",
+     *      [root] --nav--> i --gat--> i --on--> [null]
+     *                             \-> o --r--> [null]
+     *
+     * There is also the case where a key has a perfect match.
+     * This implies the key is being updated (re-added),
+     * so no tree transformations are necessary.
+     *
+     * In case 1, key offset < key length, and the node pointer is null
+     * In case 2, key offset = key length, but segment offset < segment length
+     * In case 3, key offset < key length, and segment offset < segment length
+     *
+     * And in the perfect match case, both offsets equal their respective length.
+     */
 
-    if(koffset < klen)
+    bool kokl = koffset < klen;
+    bool sosl = *lmp != NULL ? soffset < (*lmp)->seglen : false;
+
+    if(kokl || sosl)
     {
-        if(*lmp != NULL && (*lmp)->seglen > soffset)
+        new = mig_radix_node_create();
+        if(!new) { return; }
+
+        if(sosl)
         {
+            /* new is the splitting node. */
             new->seglen = soffset;
             new->segment = malloc(new->seglen);
+            /* copy the shared part of the key into it. */
             memcpy(new->segment, (*lmp)->segment, new->seglen);
+            /* make old node a child of the new node, increment segment offset */
             new->nodes[(*lmp)->segment[soffset++]] = *lmp;
+            /* remove the shared part of the original node. */
             (*lmp)->seglen -= soffset;
             memmove((*lmp)->segment, (*lmp)->segment + soffset, (*lmp)->seglen);
+            /* replace old node pointer with new node pointer. */
             *lmp = new;
-            lmp = &new->nodes[key[koffset++]];
-            new = mig_radix_node_create();
+            if(kokl)
+            {
+                /* If there is still some of the key left,
+                 * create another node and update node pointer pointer
+                 */
+                lmp = &new->nodes[key[koffset++]];
+                new = mig_radix_node_create();
+                if(!new) { return; }
+            }
         }
 
-        new->seglen = klen - koffset;
-        new->segment = malloc(new->seglen);
-        memcpy(new->segment, key + koffset, new->seglen);
+        if(kokl)
+        {
+            new->seglen = klen - koffset;
+            new->segment = malloc(new->seglen);
+            memcpy(new->segment, key + koffset, new->seglen);
+        }
         new->value = value;
         *lmp = new;
     }
