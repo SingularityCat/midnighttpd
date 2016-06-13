@@ -6,7 +6,7 @@
 
 #include <unistd.h>
 
-#include <mig_io.h>
+#include "mig_io.h"
 
 /* A nice hacro - expand and concatenate */
 #define expcat(a, b) inner_expcat(a, b)

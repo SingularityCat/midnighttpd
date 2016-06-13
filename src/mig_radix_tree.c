@@ -32,7 +32,7 @@ struct mig_radix_node **mig_radix_node_find(struct mig_radix_node **root, const 
                                             size_t *koffp, size_t *soffp, struct mig_radix_node **prevp)
 {
     uint8_t seg;
-    size_t koff = 0, soff;
+    size_t koff = 0, soff = 0;
 
     struct mig_radix_node *prev = NULL, *cur = *root, **curp = root;
 
@@ -165,6 +165,15 @@ void mig_radix_tree_insert(struct mig_radix_tree *tree, const uint8_t *key, size
     }
     else
     {
+        if(*lmp == NULL)
+        {
+            /* This will only happen if key offset == key length
+             * when there are no nodes in the tree.
+             * The only way key offset can equal key length
+             * in this case, is if key length is 0.
+             */
+            *lmp = mig_radix_node_create();
+        }
         (*lmp)->value = value;
     }
 }
