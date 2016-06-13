@@ -72,7 +72,6 @@ void conn_free(struct mig_loop *lp, size_t idx)
 
 void conn_init(struct mig_loop *lp, size_t idx)
 {
-    int fd = mig_loop_getfd(lp, idx);
     struct mhttp_req *rctx = mhttp_req_create(
         config.rx_buflen,
         config.tx_buflen
@@ -311,14 +310,12 @@ void conn_send(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
-    size_t chunklen;
     ssize_t sent;
 
     /* Check if buffer is empty */
     if(mig_buf_isempty(&rctx->txbuf))
     {
         mig_buf_empty(&rctx->txbuf);
-        chunklen = rctx->srclen < rctx->txbuf.len ? rctx->srclen : rctx->txbuf.len;
         sent = mig_buf_read(&rctx->txbuf, rctx->srcfd, rctx->srclen); /* Sent here means amount read. */
         if(sent == -1) { goto io_error; }
         else if(sent == 0 && rctx->srclen > 0)
@@ -653,12 +650,15 @@ int main(int argc, char **argv)
     mig_setopt(opts, '?', 0, 0);
     mig_setopt(opts, 'h', 0, 0);
     int opt = mig_getopt(opts, &argc, &argv, &argn);
-    char *e;
+    char *root = ".", *e;
     long int n;
     while(opt != -1)
     {
         switch(opt)
         {
+            case 0:
+                root = argv[0];
+                break;
             case 'm':
                 e = argv[0];
                 for(int i = 1; i < argn; i++)
@@ -704,6 +704,7 @@ int main(int argc, char **argv)
 
     mig_optcfg_destroy(opts);
 
+    chdir(root);
     loop = mig_loop_create(config.loop_slots);
 
     for(size_t i = 0; i < inet_addrc; i++)
