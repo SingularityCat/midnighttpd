@@ -52,19 +52,23 @@ int mig_getopt(struct mig_optcfg *o, int *argcp, char ***argvp, int *argnp)
         return -1;
     }
 
-    unsigned int offset = *argnp, lim;
-    char **argv = *argvp + offset;
+    int argn = *argnp, offset, opt;
+    unsigned int lim;
+    char **argv = *argvp + argn;
     char *arg = *argv;
-    int opt;
 
-    *argvp = argv + 1;
-    *argcp -= offset + 1;
     opt = arg[0];
-    offset = o->opts[opt].mandatory;
 
-    if(opt == '-')
+    if(opt != '-')
     {
+        offset = 1;
+        opt = 0;
+    }
+    else
+    {
+        argn++;
         opt = arg[1] & 0x7F;
+        offset = o->opts[opt].mandatory;
         lim = o->opts[opt].optional;
         lim = lim > offset || lim == 0 ? lim : -1;
         lim = lim < *argcp ? lim : *argcp;
@@ -76,11 +80,9 @@ int mig_getopt(struct mig_optcfg *o, int *argcp, char ***argvp, int *argnp)
             }
         }
     }
-    else
-    {
-        opt = 0;
-    }
 
+    *argvp = argv;
+    *argcp -= argn;
     *argnp = offset;
 
     return opt;
