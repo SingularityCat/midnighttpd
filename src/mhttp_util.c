@@ -45,26 +45,30 @@ size_t mhttp_scrubpath(char *str, bool allow_ascent, enum mhttp_path_flags *flgp
     char *psp, *sp;
     char * const end = str + strlen(str);
     psp = strchr(str, '/');
+
     while(psp && psp != end)
     {
         bool copy = true;
         sp = strchr(psp+1, '/');
         sp = sp ? sp : end;
-        if(strncmp(psp, "/..", 3) == 0)
+        if(psp[1] == '.')
         {
-            copy = false;
-            if(depth > 0)
+            if(psp[2] == '.' && (psp[3] == '/' || psp[3] == 0))
             {
-                while(*--dest != '/');
-                depth--;
-            }
-            else
-            {
-                flg |= MHTTP_PATH_ASCENDANT;
-                copy = allow_ascent;
+                if(depth > 0)
+                {
+                    while(*--dest != '/');
+                    depth--;
+                    copy = false;
+                }
+                else
+                {
+                    flg |= MHTTP_PATH_ASCENDANT;
+                    copy = allow_ascent;
+                }
             }
         }
-        else if(strncmp(psp, "/.", 2) == 0 || strncmp(psp, "//", 2) == 0)
+        else if(psp[1] == '/' || psp[1] == 0)
         {
             copy = false;
         }
@@ -77,6 +81,7 @@ size_t mhttp_scrubpath(char *str, bool allow_ascent, enum mhttp_path_flags *flgp
         }
         psp = sp;
     }
+
     *dest = 0;
     if(flgp)
     {
