@@ -43,3 +43,6 @@ tchat: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/tchat.c
 midnighttpd: ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} src/midnighttpd.c src/midnighttpd_config.c src/midnighttpd_config.h
 	${CC} ${LDFLAGS} ${CFLAGS} -o midnighttpd src/midnighttpd.c src/midnighttpd_config.c ${CORE_SOURCES} ${MHTTP_SOURCES}
 
+.PHONY: lint
+lint:
+	clang-tidy ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} src/midnighttpd.c src/midnighttpd_config.c src/midnighttpd_config.h
