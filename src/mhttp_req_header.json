@@ -1,0 +1,14 @@
+{
+    "guard": "MHTTP_REQ_HEADER_H",
+    "enum name": "mhttp_req_header",
+    "func name": "mhttp_req_match_header",
+    "rfunc name": "mhttp_req_str_header",
+    "case insensitive": true,
+    "enumeration": {
+        "MHTTP_HEADER_CONNECTION":          "Connection:",
+        "MHTTP_HEADER_RANGE":               "Range:",
+        "MHTTP_HEADER_CONTENT_LENGTH":      "Content-Length:",
+        "MHTTP_HEADER_TRANSFER_ENCODING":   "Transfer-Encoding:",
+        "MHTTP_HEADER_AUTHENTICATE":        "WWW-Authenticate:"
+    }
+}

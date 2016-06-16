@@ -7,13 +7,13 @@
 
 enum mhttp_method
 {
-  MHTTP_METHOD_OPTIONS = 1,
+  MHTTP_METHOD_DELETE = 1,
+  MHTTP_METHOD_GET,
   MHTTP_METHOD_HEAD,
+  MHTTP_METHOD_OPTIONS,
   MHTTP_METHOD_PATCH,
   MHTTP_METHOD_POST,
-  MHTTP_METHOD_GET,
-  MHTTP_METHOD_PUT,
-  MHTTP_METHOD_DELETE
+  MHTTP_METHOD_PUT
 };
 
 
@@ -21,20 +21,20 @@ static inline const char *mhttp_str_method(enum mhttp_method e)
 {
   switch(e)
   {
-    case MHTTP_METHOD_OPTIONS:
-      return "OPTIONS";
+    case MHTTP_METHOD_DELETE:
+      return "DELETE";
+    case MHTTP_METHOD_GET:
+      return "GET";
     case MHTTP_METHOD_HEAD:
       return "HEAD";
+    case MHTTP_METHOD_OPTIONS:
+      return "OPTIONS";
     case MHTTP_METHOD_PATCH:
       return "PATCH";
     case MHTTP_METHOD_POST:
       return "POST";
-    case MHTTP_METHOD_GET:
-      return "GET";
     case MHTTP_METHOD_PUT:
       return "PUT";
-    case MHTTP_METHOD_DELETE:
-      return "DELETE";
     default:
       return NULL;
   }

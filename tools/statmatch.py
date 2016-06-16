@@ -86,7 +86,7 @@ print("""
 
 #include <stdlib.h>
 """)
-icase = source.get("case_insensitive", False)
-tree, toks = mktree(source["enumeration"].items())
-wrapmat(tree, icase, toks, source["enum_name"], source["func_name"], source["rfunc_name"])
+icase = source.get("case insensitive", False)
+tree, toks = mktree(sorted(source["enumeration"].items()))
+wrapmat(tree, icase, toks, source["enum name"], source["func name"], source["rfunc name"])
 print("#endif")
