@@ -246,7 +246,7 @@ static inline enum mhttp_method mhttp_match_method(const char *str, const char *
 
   if(osp)
   {
-    *osp = str;
+    *osp = str - 1;
   }
 
   return res;
