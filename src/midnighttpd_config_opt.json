@@ -1,0 +1,16 @@
+{
+    "guard": "MIDNIGHTTPD_CONFIG_OPT_H",
+    "enum name": "midnighttpd_config_opt",
+    "func name": "midnighttpd_match_config_opt",
+    "rfunc name": "midnighttpd_str_config_opt",
+    "enumeration": {
+        "MIDNIGHTTPD_CONFIG_LISTEN":            "listen:",
+        "MIDNIGHTTPD_CONFIG_LISTEN_UNIX":       "listen-unix:",
+        "MIDNIGHTTPD_CONFIG_DEFAULT_MIMETYPE":  "default-mimetype:",
+        "MIDNIGHTTPD_CONFIG_MIMETYPE":          "mimetype:",
+        "MIDNIGHTTPD_CONFIG_DIRINDEX":          "dirindex:",
+        "MIDNIGHTTPD_CONFIG_LOOP_SLOTS":        "loop-slots:",
+        "MIDNIGHTTPD_CONFIG_RXBUF":             "receive-buffer:",
+        "MIDNIGHTTPD_CONFIG_TXBUF":             "transmission-buffer:"
+    }
+}
