@@ -94,6 +94,7 @@ bool mhttp_req_parse(struct mhttp_req *req)
 
     /* Analyse client headers */
     req->method = mhttp_match_method(req->rxbuf.base, (const char **) &req->path);
+    req->path++;
 
     argptr = strchr(req->path, '?');
     chkptr = strchr(req->path, ' ');
