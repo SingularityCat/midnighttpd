@@ -71,7 +71,7 @@ def wrapmat(tree, icase, toks, mtype, mident, mrident, tab="  "):
     print()
     print(tab + "if(osp)")
     print(tab + "{")
-    print(tab + tab + "*osp = str;")
+    print(tab + tab + "*osp = str - 1;")
     print(tab + "}")
     print()
     print(tab + "return res;")
