@@ -4,11 +4,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include <assert.h>
+#include <strings.h>
 
-#include <unistd.h>
-
-#include "mig_core.h"
 #include "mig_io.h"
 #include "mhttp_util.h"
 #include "mhttp_status.h"

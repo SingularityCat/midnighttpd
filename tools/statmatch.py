@@ -17,7 +17,7 @@ def mktree(ptset):
         toks.append((tok, path))
     return root, toks
 
-def statmat(tree, tab="    ", depth=1):
+def statmat(tree, icase, tab="    ", depth=1):
     idt = tab * depth
     print(idt + "c = *str++;")
     print(idt + "switch(c)")
@@ -27,13 +27,17 @@ def statmat(tree, tab="    ", depth=1):
             print(idt + tab +"default:")
             print(idt + tab + tab +"res = {0};".format(tree[c]))
             break
-        print(idt + tab + "case '{0}':".format(c))
-        statmat(tree[c], tab, depth+3)
+        if icase:
+            print(idt + tab + "case '{0}':".format(c.lower()))
+            print(idt + tab + "case '{0}':".format(c.upper()))
+        else:
+            print(idt + tab + "case '{0}':".format(c))
+        statmat(tree[c], icase, tab, depth+3)
     print(idt + "}")
     if depth > 1:
         print(idt + "break;")
 
-def wrapmat(tree, toks, mtype, mident, mrident, tab="  "):
+def wrapmat(tree, icase, toks, mtype, mident, mrident, tab="  "):
     if len(toks) == 0:
         return
 
@@ -63,7 +67,7 @@ def wrapmat(tree, toks, mtype, mident, mrident, tab="  "):
     print("{")
     print(tab + "enum {0} res = 0;".format(mtype))
     print(tab + "char c;")
-    statmat(tree, tab)
+    statmat(tree, icase, tab)
     print()
     print(tab + "if(osp)")
     print(tab + "{")
@@ -82,6 +86,7 @@ print("""
 
 #include <stdlib.h>
 """)
+icase = source.get("case_insensitive", False)
 tree, toks = mktree(source["enumeration"].items())
-wrapmat(tree, toks, source["enum_name"], source["func_name"], source["rfunc_name"])
+wrapmat(tree, icase, toks, source["enum_name"], source["func_name"], source["rfunc_name"])
 print("#endif")

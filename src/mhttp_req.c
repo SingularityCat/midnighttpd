@@ -133,20 +133,20 @@ bool mhttp_req_parse(struct mhttp_req *req)
     while(chkptr != NULL)
     {
         chkptr += 2; /* Skip crlf */
-        if(strncmp("Connection:", chkptr, 11) == 0)
+        if(strncasecmp("Connection:", chkptr, 11) == 0)
         {
             chkptr += 11;
-            while(*chkptr++ == ' '); /* Skip whitespace */
-            if(strncmp("close", chkptr, 5) == 0)
+            while(*chkptr == ' ') { chkptr++; } /* Skip whitespace */
+            if(strncasecmp("close", chkptr, 5) == 0)
             {
                 req->eos = true;
             }
-            else if(strncmp("keepalive", chkptr, 9) == 0)
+            else if(strncasecmp("keep-alive", chkptr, 9) == 0)
             {
                 req->eos = false;
             }
         }
-        else if(strncmp("Range:", chkptr, 6) == 0)
+        else if(strncasecmp("Range:", chkptr, 6) == 0)
         {
             chkptr += 6;
             if(mhttp_parse_range(chkptr, &req->range)) { goto malformed; }
