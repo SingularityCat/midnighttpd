@@ -27,7 +27,7 @@ def statmat(tree, icase, tab="    ", depth=1):
             print(idt + tab +"default:")
             print(idt + tab + tab +"res = {0};".format(tree[c]))
             break
-        if icase:
+        if icase and c.lower() != c.upper():
             print(idt + tab + "case '{0}':".format(c.lower()))
             print(idt + tab + "case '{0}':".format(c.upper()))
         else:
