@@ -258,7 +258,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                     "Content-Length: %zu\r\n"
                     "Content-Type: %s\r\n"
                     "\r\n", mhttp_str_ver(rctx->version),
-                    srcstat.st_size,
+                    (size_t) srcstat.st_size,
                     mimetype);
             }
             if(rctx->method == MHTTP_METHOD_GET)
