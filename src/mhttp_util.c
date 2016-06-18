@@ -1,5 +1,7 @@
 #include <string.h>
 
+#include "mig_parse.h"
+
 #include "mhttp_util.h"
 
 size_t mhttp_urldecode(char *str, size_t lim)
@@ -16,10 +18,10 @@ size_t mhttp_urldecode(char *str, size_t lim)
         switch(chr)
         {
             case '%':
-                x = mhttp_char2hex(chr = *src++);
+                x = mig_char2hex(chr = *src++);
                 if(x == -1) { continue; }
                 composed = x << 4;
-                x = mhttp_char2hex(chr = *src++);
+                x = mig_char2hex(chr = *src++);
                 if(x == -1) { continue; }
                 composed |= x;
                 *dest++ = composed;
