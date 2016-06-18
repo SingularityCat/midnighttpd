@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "mhttp_req.h"
+#include "mhttp_req_header.h"
 
 /* For reference:
  *
@@ -133,24 +134,24 @@ bool mhttp_req_parse(struct mhttp_req *req)
     chkptr = strstr(req->rxbuf.base + bufidx, "\r\n");
     while(chkptr != NULL)
     {
+        enum mhttp_req_header hdr;
         chkptr += 2; /* Skip crlf */
-        if(strncasecmp("Connection:", chkptr, 11) == 0)
+        hdr = mhttp_req_match_header(chkptr, &chkptr);
+        while(*chkptr == ' ') { chkptr++; } /* Skip whitespace */
+        switch(hdr)
         {
-            chkptr += 11;
-            while(*chkptr == ' ') { chkptr++; } /* Skip whitespace */
-            if(strncasecmp("close", chkptr, 5) == 0)
-            {
-                req->eos = true;
-            }
-            else if(strncasecmp("keep-alive", chkptr, 9) == 0)
-            {
-                req->eos = false;
-            }
-        }
-        else if(strncasecmp("Range:", chkptr, 6) == 0)
-        {
-            chkptr += 6;
-            if(mhttp_parse_range(chkptr, &req->range)) { goto malformed; }
+            case MHTTP_HEADER_CONNECTION:
+                if(strncasecmp("close", chkptr, 5) == 0)
+                {
+                    req->eos = true;
+                }
+                else if(strncasecmp("keep-alive", chkptr, 9) == 0)
+                {
+                    req->eos = false;
+                }
+                break;
+            case MHTTP_HEADER_RANGE:
+                if(mhttp_parse_range(chkptr, &req->range)) { goto malformed; }
         }
         bufidx = (chkptr - req->rxbuf.base);
         chkptr = strstr(req->rxbuf.base + bufidx, "\r\n");
