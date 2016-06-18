@@ -1,4 +1,7 @@
 #define _GNU_SOURCE
+
+#include "mig_parse.h"
+
 #include "mhttp_req.h"
 #include "mhttp_req_header.h"
 
@@ -61,8 +64,10 @@ void mhttp_req_reset(struct mhttp_req *req)
     req->range.high = -1;
     req->range.spec = MHTTP_RANGE_SPEC_NONE;
     req->method = 0;
-    req->path = 0;
-    req->args = 0;
+    req->path = NULL;
+    req->args = NULL;
+    req->txenc = MHTTP_REQ_TXENC_NONE;
+    req->entlen = 0;
     req->srcfd = -1;
     req->srclen = 0;
 }
@@ -134,9 +139,10 @@ bool mhttp_req_parse(struct mhttp_req *req)
     chkptr = strstr(req->rxbuf.base + bufidx, "\r\n");
     while(chkptr != NULL)
     {
+        char *pptr;
         enum mhttp_req_header hdr;
         chkptr += 2; /* Skip crlf */
-        hdr = mhttp_req_match_header(chkptr, &chkptr);
+        hdr = mhttp_req_match_header(chkptr, (const char **) &chkptr);
         while(*chkptr == ' ') { chkptr++; } /* Skip whitespace */
         switch(hdr)
         {
@@ -152,6 +158,25 @@ bool mhttp_req_parse(struct mhttp_req *req)
                 break;
             case MHTTP_HEADER_RANGE:
                 if(mhttp_parse_range(chkptr, &req->range)) { goto malformed; }
+                break;
+            case MHTTP_HEADER_CONTENT_LENGTH:
+                req->entlen = mig_parse_uint_dec(chkptr, (const char **) &pptr);
+                if(pptr)
+                {
+                    req->txenc = MHTTP_REQ_TXENC_IDENTITY;
+                    chkptr = pptr;
+                }
+                break;
+            case MHTTP_HEADER_TRANSFER_ENCODING:
+                if(strncasecmp("chunked", chkptr, 7) == 0)
+                {
+                    req->txenc = MHTTP_REQ_TXENC_CHUNKED;
+                }
+                else if(strncasecmp("identity", chkptr, 8) == 0)
+                {
+                    req->txenc = MHTTP_REQ_TXENC_IDENTITY;
+                }
+                break;
         }
         bufidx = (chkptr - req->rxbuf.base);
         chkptr = strstr(req->rxbuf.base + bufidx, "\r\n");

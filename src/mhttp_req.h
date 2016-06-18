@@ -12,6 +12,13 @@
 #include "mhttp_method.h"
 #include "mhttp_range.h"
 
+enum mhttp_req_txenc
+{
+    MHTTP_REQ_TXENC_NONE = 0,
+    MHTTP_REQ_TXENC_IDENTITY = 1,
+    MHTTP_REQ_TXENC_CHUNKED
+};
+
 struct mhttp_req
 {
     struct mig_buf rxbuf;
@@ -21,6 +28,8 @@ struct mhttp_req
     const char *path;
     const char *args;
     struct mhttp_range range;
+    enum mhttp_req_txenc txenc;
+    size_t entlen;
     bool eos;
     int srcfd;
     size_t srclen;
