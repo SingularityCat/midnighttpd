@@ -3,6 +3,7 @@ CFLAGS:=${CFLAGS} -I${SRCDIR} -g -pedantic
 
 CORE_SOURCES=\
 ${SRCDIR}/mig_core.c\
+${SRCDIR}/mig_io.c\
 ${SRCDIR}/mig_opt.c\
 ${SRCDIR}/mig_radix_tree.c
 

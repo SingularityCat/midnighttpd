@@ -8,7 +8,7 @@
 #include <string.h>
 
 
-static inline size_t mig_unintr_read(int fd, char *buf, size_t buflen)
+static inline ssize_t mig_unintr_read(int fd, char *buf, size_t buflen)
 {
     size_t n;
     retry_read: n = read(fd, buf, buflen);
@@ -20,7 +20,7 @@ static inline size_t mig_unintr_read(int fd, char *buf, size_t buflen)
 }
 
 
-static inline size_t mig_unintr_write(int fd, char *buf, size_t buflen)
+static inline ssize_t mig_unintr_write(int fd, char *buf, size_t buflen)
 {
     size_t n;
     retry_write: n = write(fd, buf, buflen);
@@ -41,20 +41,26 @@ struct mig_buf
 };
 
 
-static inline size_t mig_buf_read(struct mig_buf *buf, int fd, size_t lim)
+static inline ssize_t mig_buf_read(struct mig_buf *buf, int fd, size_t lim)
 {
     size_t c = (buf->len - buf->end) < lim ? buf->len - buf->end : lim;
-    size_t n = mig_unintr_read(fd, buf->base + buf->end, c);
-    buf->end += n;
+    ssize_t n = mig_unintr_read(fd, buf->base + buf->end, c);
+    if(n != -1)
+    {
+        buf->end += n;
+    }
     return n;
 }
 
 
-static inline size_t mig_buf_write(struct mig_buf *buf, int fd, size_t lim)
+static inline ssize_t mig_buf_write(struct mig_buf *buf, int fd, size_t lim)
 {
     size_t c = (buf->end - buf->off) < lim ? buf->end - buf->off : lim;
-    size_t n = mig_unintr_write(fd, buf->base + buf->off, c);
-    buf->off += n;
+    ssize_t n = mig_unintr_write(fd, buf->base + buf->off, c);
+    if(n != -1)
+    {
+        buf->off += n;
+    }
     return n;
 }
 
@@ -87,5 +93,7 @@ static inline void mig_buf_empty(struct mig_buf *buf)
     buf->end = 0;
     buf->off = 0;
 }
+
+int mig_buf_loadfile(struct mig_buf *buf, const char *path);
 
 #endif
