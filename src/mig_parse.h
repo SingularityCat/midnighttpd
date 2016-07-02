@@ -195,6 +195,7 @@ static inline unsigned int mig_parse_uint_##base_name(const char *str, const cha
             n |= d; \
             d = convfunc(*str++); \
         } \
+        str--;\
     } \
     else \
     { \
@@ -221,6 +222,7 @@ static inline unsigned int mig_parse_uint_##base_name(const char *str, const cha
             n += d; \
             d = convfunc(*str++); \
         } \
+        str--;\
     } \
     else \
     { \
