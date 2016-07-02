@@ -4,6 +4,7 @@
     "func name": "midnighttpd_match_config_opt",
     "rfunc name": "midnighttpd_str_config_opt",
     "enumeration": {
+        "MIDNIGHTTPD_CONFIG_ROOT":              "root:",
         "MIDNIGHTTPD_CONFIG_LISTEN":            "listen:",
         "MIDNIGHTTPD_CONFIG_LISTEN_UNIX":       "listen-unix:",
         "MIDNIGHTTPD_CONFIG_DEFAULT_MIMETYPE":  "default-mimetype:",
