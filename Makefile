@@ -5,6 +5,7 @@ CORE_SOURCES=\
 ${SRCDIR}/mig_core.c\
 ${SRCDIR}/mig_io.c\
 ${SRCDIR}/mig_opt.c\
+${SRCDIR}/mig_dynarray.c\
 ${SRCDIR}/mig_radix_tree.c
 
 CORE_HEADERS=\
@@ -12,6 +13,7 @@ ${SRCDIR}/mig_core.h\
 ${SRCDIR}/mig_io.h\
 ${SRCDIR}/mig_parse.h\
 ${SRCDIR}/mig_opt.h\
+${SRCDIR}/mig_dynarray.h\
 ${SRCDIR}/mig_radix_tree.h
 
 MHTTP_SOURCES=\
