@@ -31,7 +31,9 @@ int mig_buf_loadfile(struct mig_buf *buf, const char *path)
     }
     else
     {
-        buf->base = malloc(len);
+        buf->base = malloc(len + 1);
+        if(buf->base == NULL) { return -1; }
+        buf->base[len] = 0;
         buf->len = len;
         buf->end = 0;
         buf->off = 0;
