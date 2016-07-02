@@ -28,6 +28,14 @@ ${SRCDIR}/mhttp_method.h\
 ${SRCDIR}/mhttp_status.h\
 ${SRCDIR}/mhttp_req.h
 
+MIDNIGHTTPD_SOURCES=\
+${SRCDIR}/midnighttpd_config.c\
+${SRCDIR}/midnighttpd.c
+
+MIDNIGHTTPD_HEADERS=\
+${SRCDIR}/midnighttpd_config_opt.h\
+${SRCDIR}/midnighttpd_config.h
+
 .PHONY: all
 all: build
 
@@ -53,8 +61,8 @@ mrt: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/mrt.c
 tchat: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/tchat.c
 	${CC} ${LDFLAGS} ${CFLAGS} -o tchat testprogs/tchat.c ${CORE_SOURCES}
 
-midnighttpd: ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} src/midnighttpd.c src/midnighttpd_config.c src/midnighttpd_config.h
-	${CC} ${LDFLAGS} ${CFLAGS} -o midnighttpd src/midnighttpd.c src/midnighttpd_config.c ${CORE_SOURCES} ${MHTTP_SOURCES}
+midnighttpd: ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} ${MIDNIGHTTPD_SOURCES} ${MIDNIGHTTPD_HEADERS}
+	${CC} ${LDFLAGS} ${CFLAGS} -o midnighttpd ${CORE_SOURCES} ${MHTTP_SOURCES} ${MIDNIGHTTPD_SOURCES}
 
 .PHONY: lint
 lint:

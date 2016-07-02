@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 #include "mig_radix_tree.h"
+#include "mig_dynarray.h"
 
 #define MIDNIGHTTPD "midnighttpd"
 
@@ -29,6 +30,7 @@
 #define DEFAULT_MIMETYPE    "text/plain"
 
 struct midnighttpd_config {
+    char *root;
     size_t loop_slots;
     size_t rx_buflen;
     size_t tx_buflen;
@@ -36,9 +38,10 @@ struct midnighttpd_config {
     size_t dirindex_buflen;
 
     struct mig_radix_tree *mimetypes;
-    const char *default_mimetype;
+    char *default_mimetype;
 };
 
 extern struct midnighttpd_config config;
+void midnighttpd_configfile_read(const char *path, struct mig_dynarray *ent_stack, struct mig_dynarray *mem_stack);
 
 #endif

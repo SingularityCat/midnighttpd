@@ -612,17 +612,23 @@ int main(int argc, char **argv)
 {
     int argn = 1;
     char default_addr[] = "0:8080";
+    struct mig_dynarray *mem_stack = mig_dynarray_create();
     struct mig_dynarray *ent_stack = mig_dynarray_create();
     int naddrs = 0;
 
+    mig_dynarray_init(mem_stack, sizeof(void *), alignof(void *), 16, MIG_DYNARRAY_DEFAULT);
     mig_dynarray_init(ent_stack, sizeof(struct mig_ent), alignof(struct mig_ent), 8, MIG_DYNARRAY_DEFAULT);
 
+    /* Configuration initialisation. */
+    config.root = strdup(".");
     config.default_mimetype = strdup(DEFAULT_MIMETYPE);
     config.mimetypes = mig_radix_tree_create();
 
     const char *usage = 
         "midnighttpd - http daemon\n"
         "usage:\n"
+        " -c configuration\n"
+        "       Load configuration from a file.\n"
         " -m mimetype [extension ...]\n"
         "       Set a mimetype for a given list of extensions\n"
         " -M mimetype\n"
@@ -648,6 +654,8 @@ int main(int argc, char **argv)
 
     struct mig_optcfg *opts = mig_optcfg_create();
 
+    mig_setopt(opts, 'c', 1, 0);
+
     mig_setopt(opts, 'm', 1, -1);
     mig_setopt(opts, 'M', 1, 0);
     mig_setopt(opts, 'q', 0, 0);
@@ -661,14 +669,18 @@ int main(int argc, char **argv)
     mig_setopt(opts, '?', 0, 0);
     mig_setopt(opts, 'h', 0, 0);
     int opt = mig_getopt(opts, &argc, &argv, &argn);
-    char *root = ".", *e;
+    char *e;
     long int n;
     while(opt != -1)
     {
         switch(opt)
         {
             case 0:
-                root = argv[0];
+                free(config.root);
+                config.root = strdup(argv[0]);
+                break;
+            case 'c':
+                midnighttpd_configfile_read(argv[0], ent_stack, mem_stack);
                 break;
             case 'm':
                 e = argv[0];
@@ -679,7 +691,7 @@ int main(int argc, char **argv)
                 }
                 break;
             case 'M':
-                free((char *) config.default_mimetype);
+                free(config.default_mimetype);
                 config.default_mimetype = strdup(argv[0]);
                 break;
             case 'q':
@@ -716,7 +728,7 @@ int main(int argc, char **argv)
 
     mig_optcfg_destroy(opts);
 
-    chdir(root);
+    chdir(config.root);
     loop = mig_loop_create(config.loop_slots);
 
     struct mig_ent ent;
@@ -740,14 +752,27 @@ int main(int argc, char **argv)
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, sigint_hndlr);
 
+    int status = 0;
+
     if(mig_loop_exec(loop))
     {
         printf("midnighttpd error - loop failed: %s\n", strerror(errno));
-        mig_loop_destroy(loop);
-        return -1;
+        status = -1;
     }
-    mig_loop_destroy(loop);
 
+    /* Free allocated memory. */
+    mig_loop_destroy(loop);
     mig_radix_tree_destroy(config.mimetypes);
-    return 0;
+
+    free(config.default_mimetype);
+    free(config.root);
+
+    void *mem;
+    while(mig_dynarray_pop(mem_stack, &mem))
+    {
+        free(mem);
+    }
+    mig_dynarray_destroy(mem_stack);
+
+    return status;
 }
