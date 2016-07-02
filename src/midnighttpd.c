@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdalign.h>
 #include <ctype.h>
 #include <errno.h>
 
@@ -18,6 +19,7 @@
 
 #include "mig_core.h"
 #include "mig_io.h"
+#include "mig_dynarray.h"
 #include "mig_opt.h"
 #include "mhttp_req.h"
 #include "mhttp_status.h"
@@ -480,11 +482,12 @@ void close_listen_sock(struct mig_loop *lp, size_t idx)
     close(mig_loop_getfd(lp, idx));
 }
 
-int cfg_bind(struct mig_loop *loop, char *addr)
+int cfg_bind(struct mig_dynarray *stk, char *addr)
 {
     int ncon = 0;
     int ssopt_v = 1;
     int servsock;
+    struct mig_ent ent;
 
     char *port;
 
@@ -530,8 +533,11 @@ int cfg_bind(struct mig_loop *loop, char *addr)
             aic = aic->ai_next;
             continue;
         }
-        listen(servsock, config.loop_slots);
-        mig_loop_register(loop, servsock, conn_accept, close_listen_sock, MIG_COND_READ, NULL);
+        ent.call = conn_accept;
+        ent.free = close_listen_sock;
+        ent.data = NULL;
+        ent.fd = servsock;
+        mig_dynarray_push(stk, &ent);
         ncon++;
         aic = aic->ai_next;
     }
@@ -546,12 +552,14 @@ void close_listen_sockunix(struct mig_loop *lp, size_t idx)
     if(path != NULL)
     {
         unlink(path);
+        free(path);
     }
 }
 
-int cfg_bindunix(struct mig_loop *loop, char *path)
+int cfg_bindunix(struct mig_dynarray *stk, char *path)
 {
     int servsock;
+    struct mig_ent ent;
     struct stat sockstat;
     struct sockaddr_un unixaddr;
     memset(&unixaddr, 0, sizeof(struct sockaddr_un));
@@ -583,8 +591,11 @@ int cfg_bindunix(struct mig_loop *loop, char *path)
         close(servsock);
         return -1;
     }
-    listen(servsock, config.loop_slots);
-    mig_loop_register(loop, servsock, conn_accept, close_listen_sockunix, MIG_COND_READ, path);
+    ent.call = conn_accept;
+    ent.free = close_listen_sockunix;
+    ent.data = strdup(path);
+    ent.fd = servsock;
+    mig_dynarray_push(stk, &ent);
 
     return 0;
 }
@@ -601,12 +612,12 @@ int main(int argc, char **argv)
 {
     int argn = 1;
     char default_addr[] = "0:8080";
-    char *inet_addrv[argc / 2];
-    char *unix_addrv[argc / 2];
-    size_t inet_addrc = 0;
-    size_t unix_addrc = 0;
+    struct mig_dynarray *ent_stack = mig_dynarray_create();
     int naddrs = 0;
 
+    mig_dynarray_init(ent_stack, sizeof(struct mig_ent), alignof(struct mig_ent), 8, MIG_DYNARRAY_DEFAULT);
+
+    config.default_mimetype = strdup(DEFAULT_MIMETYPE);
     config.mimetypes = mig_radix_tree_create();
 
     const char *usage = 
@@ -668,16 +679,17 @@ int main(int argc, char **argv)
                 }
                 break;
             case 'M':
-                config.default_mimetype = argv[0];
+                free((char *) config.default_mimetype);
+                config.default_mimetype = strdup(argv[0]);
                 break;
             case 'q':
                 config.dirindex_enabled = false;
                 break;
             case 'l':
-                inet_addrv[inet_addrc++] = argv[0];
+                cfg_bind(ent_stack, argv[0]);
                 break;
             case 'u':
-                unix_addrv[unix_addrc++] = argv[0];
+                cfg_bindunix(ent_stack, argv[0]);
                 break;
             case 'n': 
             case 'r':
@@ -707,26 +719,23 @@ int main(int argc, char **argv)
     chdir(root);
     loop = mig_loop_create(config.loop_slots);
 
-    for(size_t i = 0; i < inet_addrc; i++)
-    {
-        if(!cfg_bind(loop, inet_addrv[i]))
-        {
-            naddrs++;
-        }
-    }
+    struct mig_ent ent;
+    bind_init:
 
-    for(size_t i = 0; i < unix_addrc; i++)
+    while(mig_dynarray_pop(ent_stack, &ent))
     {
-        if(!cfg_bindunix(loop, unix_addrv[i]))
-        {
-            naddrs++;
-        }
+        listen(ent.fd, config.loop_slots);
+        mig_loop_register(loop, ent.fd, ent.call, ent.free, MIG_COND_READ, ent.data);
+        naddrs++;
     }
 
     if(naddrs < 1)
     {
-        cfg_bind(loop, default_addr);
+        cfg_bind(ent_stack, default_addr);
+        goto bind_init;
     }
+
+    mig_dynarray_destroy(ent_stack);
 
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, sigint_hndlr);
