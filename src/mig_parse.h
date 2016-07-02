@@ -111,7 +111,7 @@ static inline int mig_parse_int(const char *str, const char **fbp);
 static inline int mig_parse_size(const char *str, const char **fbp)
 {
     int mantissa = mig_parse_int(str, &str);
-    int base = 0;
+    int base = 1;
     if(str != NULL)
     {
         switch(*str++)
