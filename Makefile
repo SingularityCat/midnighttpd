@@ -29,10 +29,12 @@ ${SRCDIR}/mhttp_status.h\
 ${SRCDIR}/mhttp_req.h
 
 MIDNIGHTTPD_SOURCES=\
+${SRCDIR}/midnighttpd_core.c\
 ${SRCDIR}/midnighttpd_config.c\
 ${SRCDIR}/midnighttpd.c
 
 MIDNIGHTTPD_HEADERS=\
+${SRCDIR}/midnighttpd_core.h\
 ${SRCDIR}/midnighttpd_config_opt.h\
 ${SRCDIR}/midnighttpd_config.h
 

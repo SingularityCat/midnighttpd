@@ -143,7 +143,7 @@ void mig_dynarray_init(struct mig_dynarray *arr, size_t usize, size_t alignment,
     arr->alignment = alignment;
     arr->unit_size = usize;
     arr->sp = -((ptrdiff_t) alignment);
-    arr->base = aligned_alloc(arr->minimum_size, alignment);
+    arr->base = aligned_alloc(alignment, arr->minimum_size);
     arr->dynarray_size = arr->minimum_size;
 }
 
