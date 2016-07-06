@@ -21,6 +21,7 @@
 #include "mig_io.h"
 #include "mig_dynarray.h"
 #include "mig_opt.h"
+#include "mig_parse.h"
 #include "mhttp_req.h"
 #include "mhttp_status.h"
 
@@ -61,7 +62,9 @@ int main(int argc, char **argv)
         " -M mimetype\n"
         "       Set default mimetype. Default is " DEFAULT_MIMETYPE "\n"
         " -q\n"
-        "       Disable directory indexing."
+        "       Disable directory indexing.\n"
+        " -Q\n"
+        "       Enable directory indexing.\n"
         " -l addr[:port]\n"
         "       Listen on a given address/port combination.\n"
         "       If port is unspecified, default to port 80.\n"
@@ -86,6 +89,7 @@ int main(int argc, char **argv)
     mig_setopt(opts, 'm', 1, -1);
     mig_setopt(opts, 'M', 1, 0);
     mig_setopt(opts, 'q', 0, 0);
+    mig_setopt(opts, 'Q', 0, 0);
     mig_setopt(opts, 'l', 1, 0);
     mig_setopt(opts, 'u', 1, 0);
 
@@ -124,22 +128,31 @@ int main(int argc, char **argv)
             case 'q':
                 config.dirindex_enabled = false;
                 break;
+            case 'Q':
+                config.dirindex_enabled = true;
+                break;
             case 'l':
                 cfg_bind(ent_stack, argv[0]);
                 break;
             case 'u':
                 cfg_bindunix(ent_stack, argv[0]);
                 break;
-            case 'n': 
+            case 'n':
+                e = NULL;
+                n = mig_parse_int(argv[0], (const char **) &e);
+                if(e && n > 0)
+                {
+                    config.loop_slots = n;
+                }
+                break;
             case 'r':
             case 't':
                 e = NULL;
-                n = strtol(argv[0], &e, 10);
-                if(!e && n < 0)
+                n = mig_parse_size(argv[0], (const char **) &e);
+                if(e && n > 0)
                 {
                     switch(opt)
                     {
-                        case 'n': config.loop_slots = n; break;
                         case 'r': config.rx_buflen = n; break;
                         case 't': config.tx_buflen = n; break;
                     }

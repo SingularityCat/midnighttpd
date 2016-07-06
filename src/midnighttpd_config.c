@@ -199,10 +199,10 @@ void midnighttpd_configfile_read(const char *path, struct mig_dynarray *ent_stac
     mig_buf_loadfile(&fbuf, path);
     char *line = fbuf.base;
     char *tok, *etok, *e;
-    enum midnighttpd_config_opt cfgopt = midnighttpd_match_config_opt(line, (const char **) &tok);
-    while(cfgopt)
+    while(line)
     {
-        while(*tok == ' ') { tok++; }
+        enum midnighttpd_config_opt cfgopt = midnighttpd_match_config_opt(line, (const char **) &tok);
+        while(*tok == ' ' || *tok == '\t') { tok++; }
         line = strchr(tok, '\n');
         if(line != NULL)
         {
@@ -211,6 +211,10 @@ void midnighttpd_configfile_read(const char *path, struct mig_dynarray *ent_stac
 
         switch(cfgopt)
         {
+            case MIDNIGHTTPD_CONFIG_INCLUDE:
+                midnighttpd_configfile_read(tok, ent_stack, mem_stack);
+                break;
+
             case MIDNIGHTTPD_CONFIG_ROOT:
                 free(config.root);
                 config.root = strdup(tok);
@@ -258,7 +262,6 @@ void midnighttpd_configfile_read(const char *path, struct mig_dynarray *ent_stac
                 config.tx_buflen = mig_parse_size(tok, NULL);
                 break;
         }
-        cfgopt = midnighttpd_match_config_opt(line, (const char **) &tok);
     }
 
     free(fbuf.base);

@@ -9,6 +9,7 @@ enum midnighttpd_config_opt
 {
   MIDNIGHTTPD_CONFIG_DEFAULT_MIMETYPE = 1,
   MIDNIGHTTPD_CONFIG_DIRINDEX,
+  MIDNIGHTTPD_CONFIG_INCLUDE,
   MIDNIGHTTPD_CONFIG_LISTEN,
   MIDNIGHTTPD_CONFIG_LISTEN_UNIX,
   MIDNIGHTTPD_CONFIG_LOOP_SLOTS,
@@ -27,6 +28,8 @@ static inline const char *midnighttpd_str_config_opt(enum midnighttpd_config_opt
       return "default-mimetype:";
     case MIDNIGHTTPD_CONFIG_DIRINDEX:
       return "dirindex:";
+    case MIDNIGHTTPD_CONFIG_INCLUDE:
+      return "include:";
     case MIDNIGHTTPD_CONFIG_LISTEN:
       return "listen:";
     case MIDNIGHTTPD_CONFIG_LISTEN_UNIX:
@@ -192,6 +195,56 @@ static inline enum midnighttpd_config_opt midnighttpd_match_config_opt(const cha
                                                             res = MIDNIGHTTPD_CONFIG_DIRINDEX;
                                                         }
                                                         break;
+                                                  }
+                                                  break;
+                                            }
+                                            break;
+                                      }
+                                      break;
+                                }
+                                break;
+                          }
+                          break;
+                    }
+                    break;
+              }
+              break;
+        }
+        break;
+    case 'i':
+        c = *str++;
+        switch(c)
+        {
+          case 'n':
+              c = *str++;
+              switch(c)
+              {
+                case 'c':
+                    c = *str++;
+                    switch(c)
+                    {
+                      case 'l':
+                          c = *str++;
+                          switch(c)
+                          {
+                            case 'u':
+                                c = *str++;
+                                switch(c)
+                                {
+                                  case 'd':
+                                      c = *str++;
+                                      switch(c)
+                                      {
+                                        case 'e':
+                                            c = *str++;
+                                            switch(c)
+                                            {
+                                              case ':':
+                                                  c = *str++;
+                                                  switch(c)
+                                                  {
+                                                    default:
+                                                      res = MIDNIGHTTPD_CONFIG_INCLUDE;
                                                   }
                                                   break;
                                             }

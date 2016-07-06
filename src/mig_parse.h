@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <strings.h>
 
 static inline int mig_char2hex(char chr)
