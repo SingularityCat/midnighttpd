@@ -149,12 +149,26 @@ int cfg_bind(struct mig_dynarray *stk, char *addr)
     return ncon > 0 ? 0 : -1;
 }
 
-int cfg_bindunix(struct mig_dynarray *stk, char *path)
+int cfg_bindunix(struct mig_dynarray *stk, char *opath)
 {
+    int cwd = open(".", 0);
+    char *path = opath, *dirslash;
     int servsock;
     struct mig_ent ent;
     struct stat sockstat;
     struct sockaddr_un unixaddr;
+
+    if(cwd == -1) { return -1; }
+
+    dirslash = strrchr(opath, '/');
+    if(dirslash)
+    {
+        *dirslash = 0;
+        if(chdir(opath)) { goto err; }
+        *dirslash = '/';
+        path = dirslash + 1;
+    }
+
     memset(&unixaddr, 0, sizeof(struct sockaddr_un));
     unixaddr.sun_family = AF_UNIX;
     strncpy(unixaddr.sun_path, path, sizeof(((struct sockaddr_un *) NULL)->sun_path) - 1);
@@ -169,7 +183,7 @@ int cfg_bindunix(struct mig_dynarray *stk, char *path)
         }
         else if(errno != ENOENT)
         {
-            return -1;
+            goto err;
         }
     }
     else if(S_ISSOCK(sockstat.st_mode))
@@ -186,19 +200,42 @@ int cfg_bindunix(struct mig_dynarray *stk, char *path)
     }
     ent.call = conn_accept;
     ent.free = conn_close_listen_sockunix;
-    ent.data = strdup(path);
+    ent.data = realpath(opath, NULL);
     ent.fd = servsock;
     mig_dynarray_push(stk, &ent);
 
+    fchdir(cwd);
+    close(cwd);
     return 0;
+
+    err:
+    fchdir(cwd);
+    close(cwd);
+    return -1;
 }
 
 void midnighttpd_configfile_read(const char *path, struct mig_dynarray *ent_stack, struct mig_dynarray *mem_stack)
 {
+    int cwd = open(".", 0);
+    char *rpath, *dirslash;
     struct mig_buf fbuf = {NULL, 0, 0, 0};
-    mig_buf_loadfile(&fbuf, path);
-    char *line = fbuf.base;
+    char *line;
     char *tok, *etok, *e;
+
+    if(cwd == -1) { return; }
+
+    rpath = realpath(path, NULL);
+    if(!rpath) { return; }
+
+    dirslash = strrchr(rpath, '/');
+    if(!dirslash) { goto err; }
+    *dirslash = 0;
+    if(chdir(rpath)) { goto err; }
+    *dirslash = '/';
+
+    mig_buf_loadfile(&fbuf, dirslash + 1);
+    line = fbuf.base;
+
     while(line)
     {
         enum midnighttpd_config_opt cfgopt = midnighttpd_match_config_opt(line, (const char **) &tok);
@@ -265,4 +302,8 @@ void midnighttpd_configfile_read(const char *path, struct mig_dynarray *ent_stac
     }
 
     free(fbuf.base);
+    err:
+    free(rpath);
+    fchdir(cwd);
+    close(cwd);
 }
