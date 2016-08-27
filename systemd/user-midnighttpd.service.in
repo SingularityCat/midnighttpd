@@ -1,0 +1,10 @@
+[Unit]
+Description=The midnighttpd web server (user mode)
+
+[Service]
+Type=simple
+ExecStart=%bindir%/midnighttpd -r $HOME/http/ -u %rundir%/http/$USER.socket -c $HOME/.config/midnighttpd.conf
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
