@@ -1,4 +1,4 @@
-listen: 127.0.0.1:80
+listen: *:80
 root: %webroot%
 include: mimetypes.conf
 mimetype: text/plain c h py conf cfg
