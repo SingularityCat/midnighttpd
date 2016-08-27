@@ -1,52 +1,63 @@
-SRCDIR=src
-CFLAGS:=${CFLAGS} -I${SRCDIR} -g -pedantic
+PREFIX ?= /usr
+BINDIR ?= ${PREFIX}/bin
+RUNDIR ?= /run
+
+
+CFLAGS:=-std=gnu11 -pedantic -Isrc ${CFLAGS} -g
 
 CORE_SOURCES=\
-${SRCDIR}/mig_core.c\
-${SRCDIR}/mig_io.c\
-${SRCDIR}/mig_opt.c\
-${SRCDIR}/mig_dynarray.c\
-${SRCDIR}/mig_radix_tree.c
+src/mig_core.c\
+src/mig_io.c\
+src/mig_opt.c\
+src/mig_dynarray.c\
+src/mig_radix_tree.c
 
 CORE_HEADERS=\
-${SRCDIR}/mig_core.h\
-${SRCDIR}/mig_io.h\
-${SRCDIR}/mig_parse.h\
-${SRCDIR}/mig_opt.h\
-${SRCDIR}/mig_dynarray.h\
-${SRCDIR}/mig_radix_tree.h
+src/mig_core.h\
+src/mig_io.h\
+src/mig_parse.h\
+src/mig_opt.h\
+src/mig_dynarray.h\
+src/mig_radix_tree.h
 
 MHTTP_SOURCES=\
-${SRCDIR}/mhttp_util.c\
-${SRCDIR}/mhttp_range.c\
-${SRCDIR}/mhttp_req.c
+src/mhttp_util.c\
+src/mhttp_range.c\
+src/mhttp_req.c
 
 MHTTP_HEADERS=\
-${SRCDIR}/mhttp_util.h\
-${SRCDIR}/mhttp_range.h\
-${SRCDIR}/mhttp_method.h\
-${SRCDIR}/mhttp_status.h\
-${SRCDIR}/mhttp_req.h
+src/mhttp_util.h\
+src/mhttp_range.h\
+src/mhttp_method.h\
+src/mhttp_status.h\
+src/mhttp_req.h
 
 MIDNIGHTTPD_SOURCES=\
-${SRCDIR}/midnighttpd_core.c\
-${SRCDIR}/midnighttpd_config.c\
-${SRCDIR}/midnighttpd.c
+src/midnighttpd_core.c\
+src/midnighttpd_config.c\
+src/midnighttpd.c
 
 MIDNIGHTTPD_HEADERS=\
-${SRCDIR}/midnighttpd_core.h\
-${SRCDIR}/midnighttpd_config_opt.h\
-${SRCDIR}/midnighttpd_config.h
+src/midnighttpd_core.h\
+src/midnighttpd_config_opt.h\
+src/midnighttpd_config.h
+
+LINT ?= clang-tidy
 
 .PHONY: all
 all: build
 
+.PHONY: install
+install: midnighttpd
+	install -m 0755 midnighttpd ${BINDIR}
+
 .PHONY: clean
 clean:
-	rm -f midnighttpd mig_test mot mrt tchat
+	rm -f mig_test mot mrt tchat
+	rm -f midnighttpd 
 
 .PHONY: build
-build: midnighttpd tchat
+build: midnighttpd
 
 .PHONY: test
 test:
@@ -66,7 +77,12 @@ tchat: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/tchat.c
 midnighttpd: ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} ${MIDNIGHTTPD_SOURCES} ${MIDNIGHTTPD_HEADERS}
 	${CC} ${LDFLAGS} ${CFLAGS} -o midnighttpd ${CORE_SOURCES} ${MHTTP_SOURCES} ${MIDNIGHTTPD_SOURCES}
 
+systemd/%: systemd/%.in
+	sed -e "s~%bindir%~${BINDIR}~" \
+	    -e "s~%rundir%~${RUNDIR}~" \
+	    $< > $@
+
 .PHONY: lint
 lint:
-	clang-tidy ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} ${MIDNIGHTTPD_SOURCES} ${MIDNIGHTTPD_HEADERS} --
+	${LINT} ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} ${MIDNIGHTTPD_SOURCES} ${MIDNIGHTTPD_HEADERS} --
 
