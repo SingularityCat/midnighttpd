@@ -1,5 +1,6 @@
 PREFIX ?= /usr
 BINDIR ?= ${PREFIX}/bin
+MANDIR ?= ${PREFIX}/share/man
 RUNDIR ?= /run
 
 WEBROOT ?= /var/www
@@ -46,23 +47,43 @@ src/midnighttpd_config.h
 LINT ?= clang-tidy
 
 SYSTEMD_FILES = systemd/tmpfiles-midnighttpd.conf systemd/system-midnighttpd.service systemd/user-midnighttpd.service
-CONFIG_FILES = conf/midnighttpd.conf
+CONFIG_FILES = conf/midnighttpd.conf conf/mimetypes.conf
+
+SYSTEMD_TFD := $(shell pkg-config systemd --variable=tmpfilesdir)
+SYSTEMD_SSD := $(shell pkg-config systemd --variable=systemdsystemunitdir)
+SYSTEMD_SUD := $(shell pkg-config systemd --variable=systemduserunitdir)
 
 .PHONY: all
 all: build
 
+.PHONY: build
+build: midnighttpd ${SYSTEMD_FILES} ${CONFIG_FILES}
+
 .PHONY: install
-install: midnighttpd
-	install -m 0755 midnighttpd ${BINDIR}
+install: build
+	install -m 0755 midnighttpd ${DESTDIR}${BINDIR}
+	install -m 0644 systemd/tmpfiles-midnighttpd.conf ${DESTDIR}${SYSTEMD_TFD}/midnighttpd.conf
+	install -m 0644 systemd/system-midnighttpd.service ${DESTDIR}${SYSTEMD_SSD}/midnighttpd.service
+	install -m 0644 systemd/user-midnighttpd.service ${DESTDIR}${SYSTEMD_SUD}/midnighttpd.service
+	mkdir -m 0644 -p ${DESTDIR}/etc/midnighttpd
+	install -m 0644 conf/midnighttpd.conf ${DESTDIR}/etc/midnighttpd/midnighttpd.conf
+	install -m 0644 conf/mimetypes.conf ${DESTDIR}/etc/midnighttpd/mimetypes.conf
+
+.PHONY: uninstall
+uninstall:
+	rm ${DESTDIR}${BINDIR}/midnighttpd
+	rm ${DESTDIR}${SYSTEMD_TFD}/midnighttpd.conf
+	rm ${DESTDIR}${SYSTEMD_SSD}/midnighttpd.service
+	rm ${DESTDIR}${SYSTEMD_SUD}/midnighttpd.service
+	rm ${DESTDIR}/etc/midnighttpd/midnighttpd.conf
+	rm ${DESTDIR}/etc/midnighttpd/mimetypes.conf
+	-rmdir ${DESTDIR}/etc/midnighttpd
 
 .PHONY: clean
 clean:
 	rm -f mig_test mot mrt tchat
 	rm -f midnighttpd
 	rm -f ${SYSTEMD_FILES} ${CONFIG_FILES}
-
-.PHONY: build
-build: midnighttpd ${SYSTEMD_FILES} ${CONFIG_FILES}
 
 .PHONY: test
 test:
