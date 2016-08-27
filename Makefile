@@ -62,7 +62,7 @@ build: midnighttpd ${SYSTEMD_FILES} ${CONFIG_FILES}
 .PHONY: install
 install: build
 	mkdir -m 0755 -p ${DESTDIR}${BINDIR}
-	install -m 0756 midnighttpd ${DESTDIR}${BINDIR}
+	install -m 0755 midnighttpd ${DESTDIR}${BINDIR}
 	mkdir -m 0755 -p ${DESTDIR}{${SYSTEMD_TFD},${SYSTEMD_SSD},${SYSTEMD_SUD}}
 	install -m 0644 systemd/tmpfiles-midnighttpd.conf ${DESTDIR}${SYSTEMD_TFD}/midnighttpd.conf
 	install -m 0644 systemd/system-midnighttpd.service ${DESTDIR}${SYSTEMD_SSD}/midnighttpd.service
