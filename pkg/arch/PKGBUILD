@@ -1,0 +1,32 @@
+# Maintainer: Elliot Thomas <elliot@voidptr.uk>
+pkgname=midnighttpd
+pkgver=0.0.0
+pkgrel=1
+pkgdesc="The midnighttpd web server"
+arch=()
+url="https://voidptr.uk/projects/midnighttpd.html"
+license=()
+groups=()
+depends=()
+makedepends=()
+optdepends=()
+provides=()
+conflicts=()
+replaces=()
+backup=()
+options=()
+install=
+changelog=
+source=($pkgname-$pkgver.tar.gz)
+noextract=()
+md5sums=() #autofill using updpkgsums
+
+build() {
+  cd "$pkgname-$pkgver"
+  make PREFIX="/usr"
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  make DESTDIR="$pkgdir/" install
+}
