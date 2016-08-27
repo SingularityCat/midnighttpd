@@ -3,7 +3,7 @@ pkgname=midnighttpd
 pkgver=0.0.0
 pkgrel=1
 pkgdesc="The midnighttpd web server"
-arch=()
+arch=('x86_64')
 url="https://voidptr.uk/projects/midnighttpd.html"
 license=()
 groups=()
@@ -22,11 +22,11 @@ noextract=()
 md5sums=() #autofill using updpkgsums
 
 build() {
-  cd "$pkgname-$pkgver"
+  cd "$pkgname"
   make PREFIX="/usr"
 }
 
 package() {
-  cd "$pkgname-$pkgver"
+  cd "$pkgname"
   make DESTDIR="$pkgdir/" install
 }
