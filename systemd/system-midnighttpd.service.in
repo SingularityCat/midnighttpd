@@ -1,0 +1,11 @@
+[Unit]
+Description=The midnighttpd web server
+Documentation=man:midnighttpd(8)
+
+[Service]
+Type=simple
+ExecStart=%bindir%/midnighttpd -r %webroot% -c /etc/midnighttpd/midnighttpd.conf
+#Restart=on-failure
+
+[Install]
+WantedBy=default.target

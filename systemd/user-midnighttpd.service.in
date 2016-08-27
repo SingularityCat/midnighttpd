@@ -1,5 +1,6 @@
 [Unit]
 Description=The midnighttpd web server (user mode)
+Documentation=man:midnighttpd(8)
 
 [Service]
 Type=simple

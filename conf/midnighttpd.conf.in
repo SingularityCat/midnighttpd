@@ -1,7 +1,5 @@
-listen: 127.0.0.1:9001
-listen-unix: ./midnighttpd.sock
-root: src
+listen: 127.0.0.1:80
+root: %webroot%
 include: mimetypes.conf
 mimetype: text/plain c h py conf cfg
 default-mimetype: application/octet-stream
-transmission-buffer: 4k

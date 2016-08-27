@@ -2,6 +2,7 @@ PREFIX ?= /usr
 BINDIR ?= ${PREFIX}/bin
 RUNDIR ?= /run
 
+WEBROOT ?= /var/www
 
 CFLAGS:=-std=gnu11 -pedantic -Isrc ${CFLAGS} -g
 
@@ -44,6 +45,9 @@ src/midnighttpd_config.h
 
 LINT ?= clang-tidy
 
+SYSTEMD_FILES = systemd/tmpfiles-midnighttpd.conf systemd/system-midnighttpd.service systemd/user-midnighttpd.service
+CONFIG_FILES = conf/midnighttpd.conf
+
 .PHONY: all
 all: build
 
@@ -54,10 +58,11 @@ install: midnighttpd
 .PHONY: clean
 clean:
 	rm -f mig_test mot mrt tchat
-	rm -f midnighttpd 
+	rm -f midnighttpd
+	rm -f ${SYSTEMD_FILES} ${CONFIG_FILES}
 
 .PHONY: build
-build: midnighttpd
+build: midnighttpd ${SYSTEMD_FILES} ${CONFIG_FILES}
 
 .PHONY: test
 test:
@@ -77,9 +82,10 @@ tchat: ${CORE_SOURCES} ${CORE_HEADERS} testprogs/tchat.c
 midnighttpd: ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} ${MIDNIGHTTPD_SOURCES} ${MIDNIGHTTPD_HEADERS}
 	${CC} ${LDFLAGS} ${CFLAGS} -o midnighttpd ${CORE_SOURCES} ${MHTTP_SOURCES} ${MIDNIGHTTPD_SOURCES}
 
-systemd/%: systemd/%.in
+%: %.in
 	sed -e "s~%bindir%~${BINDIR}~" \
 	    -e "s~%rundir%~${RUNDIR}~" \
+	    -e "s~%webroot%~${WEBROOT}~" \
 	    $< > $@
 
 .PHONY: lint
