@@ -1,1 +1,1 @@
-d %rundir%/http 5777 http http
+d %rundir%/http 3777 http http
