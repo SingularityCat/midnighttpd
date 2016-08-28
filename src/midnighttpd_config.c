@@ -192,7 +192,10 @@ int cfg_bindunix(struct mig_dynarray *stk, char *opath)
     }
 
     servsock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if(bind(servsock, (struct sockaddr *) &unixaddr, sizeof(struct sockaddr_un)))
+    mode_t msk = umask(0117); /* Ensure 0660 permissions. */
+    int ret = bind(servsock, (struct sockaddr *) &unixaddr, sizeof(struct sockaddr_un));
+    umask(msk);
+    if(ret)
     {
         printf("midnighttpd error - bind: %s\n", strerror(errno));
         close(servsock);
