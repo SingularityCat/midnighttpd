@@ -5,7 +5,7 @@ RUNDIR ?= /run
 
 WEBROOT ?= /var/www
 
-CFLAGS:=-std=gnu11 -pedantic -Isrc ${CFLAGS} -g
+CFLAGS:=-std=gnu11 -pedantic -Isrc -g ${CFLAGS}
 
 CORE_SOURCES=\
 src/mig_core.c\
@@ -106,10 +106,11 @@ midnighttpd: ${CORE_SOURCES} ${CORE_HEADERS} ${MHTTP_SOURCES} ${MHTTP_HEADERS} $
 	${CC} ${LDFLAGS} ${CFLAGS} -o midnighttpd ${CORE_SOURCES} ${MHTTP_SOURCES} ${MIDNIGHTTPD_SOURCES}
 
 %: %.in
-	sed -e "s~%bindir%~${BINDIR}~" \
-	    -e "s~%rundir%~${RUNDIR}~" \
-	    -e "s~%webroot%~${WEBROOT}~" \
-	    $< > $@
+	@sed -e "s~%bindir%~${BINDIR}~" \
+	     -e "s~%rundir%~${RUNDIR}~" \
+	     -e "s~%webroot%~${WEBROOT}~" \
+	     $< > $@
+	@echo "Generated $@"
 
 .PHONY: lint
 lint:

@@ -75,18 +75,34 @@ void mhttp_req_reset(struct mhttp_req *req)
 
 bool mhttp_req_check(struct mhttp_req *req, size_t offset)
 {
-    char *chkptr;
+    char *chkptr = NULL, *lf1, *lf2, *eob;
+    /* RFC 2616 section 19.3 suggests tolerant applications should handle improper line termination.
+     * So we look for *LF*LF rather then CRLFCRLF.
+     */
 
-    /* As we can recv bytes individually, we must check up to the previous 3 bytes as well */
-    offset -= offset < 3 ? offset : 3;
-    chkptr = memmem(req->rxbuf.base + offset, req->rxbuf.end - offset, "\r\n\r\n", 4);
+    eob = req->rxbuf.base + req->rxbuf.end; /* end of (written) buffer. */
+
+    /* As we can recv bytes individually, we must check some previous bytes as well */
+    offset -= offset < 2 ? offset : 2;
+
+    lf1 = memchr(req->rxbuf.base + offset, '\n', eob - (req->rxbuf.base + offset));
+    while(lf1)
+    {
+        lf2 = memchr(lf1 + 1, '\n', eob - (lf1 + 1));
+        if(lf2 && lf2 - lf1 < 3)
+        {
+            chkptr = lf2;
+            break;
+        }
+        lf1 = lf2;
+    }
 
     if(chkptr != NULL)
     {
         /* Make a null terminated string */
         *chkptr = 0;
         /* Set 'offset' of recv buffer to just after the end of this header. */
-        req->rxbuf.off = (chkptr - req->rxbuf.base) + 4;
+        req->rxbuf.off = (chkptr - req->rxbuf.base) + 1;
         return true;
     }
 
@@ -136,12 +152,12 @@ bool mhttp_req_parse(struct mhttp_req *req)
 
     bufidx = (chkptr + 1) - req->rxbuf.base;
 
-    chkptr = strstr(req->rxbuf.base + bufidx, "\r\n");
+    chkptr = strchr(req->rxbuf.base + bufidx, '\n'); /* RFC 2616 section 19.3 */
     while(chkptr != NULL)
     {
         char *pptr;
         enum mhttp_req_header hdr;
-        chkptr += 2; /* Skip crlf */
+        chkptr++; /* Skip crlf */
         hdr = mhttp_req_match_header(chkptr, (const char **) &chkptr);
         while(*chkptr == ' ') { chkptr++; } /* Skip whitespace */
         switch(hdr)
@@ -179,7 +195,7 @@ bool mhttp_req_parse(struct mhttp_req *req)
                 break;
         }
         bufidx = (chkptr - req->rxbuf.base);
-        chkptr = strstr(req->rxbuf.base + bufidx, "\r\n");
+        chkptr = strchr(req->rxbuf.base + bufidx, '\n');
     }
 
     return true;
