@@ -4,7 +4,7 @@ Documentation=man:midnighttpd(8)
 
 [Service]
 Type=simple
-ExecStart=%bindir%/midnighttpd -r $HOME/http/ -u %rundir%/http/$USER.socket -c $HOME/.config/midnighttpd.conf
+ExecStart=%bindir%/midnighttpd ${HOME}/http/ -u %rundir%/http/${USER}.socket -c ${HOME}/.config/midnighttpd.conf
 Restart=on-failure
 
 [Install]
