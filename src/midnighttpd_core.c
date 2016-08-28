@@ -198,37 +198,40 @@ void conn_intr(struct mig_loop *lp, size_t idx)
             {
                 rctx->range.spec = MHTTP_RANGE_SPEC_NONE;
             }
-            if(rctx->range.low >= srcstat.st_size)
-            {
-                dprintf(fd,
-                    "%s " http416 "\r\n"
-                    SERVER_HEADER
-                    "Content-Length: 0\r\n"
-                    "Content-Range: */%zu\r\n"
-                    "Content-Type: %s\r\n"
-                    "\r\n", mhttp_str_ver(rctx->version),
-                    (size_t) srcstat.st_size,
-                    mimetype);
-                break;
-            }
-            if(rctx->range.high >= srcstat.st_size)
-            {
-                rctx->range.high = srcstat.st_size;
-            }
 
             if(rctx->range.spec != MHTTP_RANGE_SPEC_NONE)
             {
-                rctx->srclen = rctx->range.high - rctx->range.low;
-                dprintf(fd,
-                    "%s " http206 "\r\n"
-                    SERVER_HEADER
-                    "Content-Length: %zu\r\n"
-                    "Content-Range: bytes %zu-%zu/%zu\r\n"
-                    "Content-Type: %s\r\n"
-                    "\r\n", mhttp_str_ver(rctx->version),
-                    rctx->srclen,
-                    rctx->range.low, rctx->range.high, (size_t) srcstat.st_size,
-                    mimetype);
+                if(rctx->range.high >= srcstat.st_size)
+                {
+                    rctx->range.high = srcstat.st_size;
+                }
+                if(rctx->range.low >= srcstat.st_size)
+                {
+                    dprintf(fd,
+                        "%s " http416 "\r\n"
+                        SERVER_HEADER
+                        "Content-Length: 0\r\n"
+                        "Content-Range: */%zu\r\n"
+                        "Content-Type: %s\r\n"
+                        "\r\n", mhttp_str_ver(rctx->version),
+                        (size_t) srcstat.st_size,
+                        mimetype);
+                    break;
+                }
+                else
+                {
+                    rctx->srclen = rctx->range.high - rctx->range.low;
+                    dprintf(fd,
+                        "%s " http206 "\r\n"
+                        SERVER_HEADER
+                        "Content-Length: %zu\r\n"
+                        "Content-Range: bytes %zu-%zu/%zu\r\n"
+                        "Content-Type: %s\r\n"
+                        "\r\n", mhttp_str_ver(rctx->version),
+                        rctx->srclen,
+                        rctx->range.low, rctx->range.high, (size_t) srcstat.st_size,
+                        mimetype);
+                }
             }
             else
             {
