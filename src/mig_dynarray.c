@@ -15,7 +15,8 @@ struct mig_dynarray *mig_dynarray_create(void)
     /* Sane defaults */
     arr->dynarray_size = 0;
     arr->alignment = 1;
-    arr->unit_size = 1;
+    arr->actual_size = 1;
+    arr->padded_size = 1;
     arr->chunk_multiplier = MIG_DYNARRAY_DEFAULT_CHUNK_MULTIPLIER;
     arr->minimum_size = 0;
 
@@ -41,26 +42,38 @@ void mig_dynarray_destroy(struct mig_dynarray *arr)
 
 bool mig_dynarray_grow(struct mig_dynarray *arr)
 {
-    bool retval = true;
-    size_t new_size = arr->dynarray_size + (arr->chunk_multiplier * arr->alignment);
-    char *baseptr = realloc(arr->base, new_size);
-    if(baseptr == NULL)
+    size_t new_size = arr->dynarray_size + (arr->chunk_multiplier * arr->padded_size);
+    char *baseptr;
+
+    /* realloc has same alignment reqs as malloc - i.e. aligned for no more than pointers. */
+    if(alignof(void *) % arr->alignment == 0)
     {
-        retval = false;
+        baseptr = realloc(arr->base, new_size);
+        if(baseptr == NULL)
+        {
+            return false;
+        }
     }
     else
     {
-        arr->dynarray_size = new_size;
-        arr->base = baseptr;
+        baseptr = aligned_alloc(arr->alignment, new_size);
+        if(baseptr == NULL)
+        {
+            return false;
+        }
+        memcpy(baseptr, arr->base, arr->dynarray_size);
+        free(arr->base);
     }
 
-    return retval;
+    arr->dynarray_size = new_size;
+    arr->base = baseptr;
+    return true;
 }
 
 bool mig_dynarray_shrink(struct mig_dynarray *arr)
 {
     bool retval = true;
-    size_t new_size = arr->dynarray_size - (arr->chunk_multiplier * arr->alignment);
+    size_t new_size = arr->dynarray_size - (arr->chunk_multiplier * arr->padded_size);
     char *baseptr;
 
     if(new_size < arr->minimum_size)
@@ -78,10 +91,10 @@ bool mig_dynarray_shrink(struct mig_dynarray *arr)
         {
             arr->dynarray_size = new_size;
             arr->base = baseptr;
-            if(arr->sp > (arr->dynarray_size - arr->alignment))
+            if(arr->sp > (arr->dynarray_size - arr->padded_size))
             {
                 /* Truncate dynarray pointer to highest valid index */
-                arr->sp = arr->dynarray_size - arr->alignment;
+                arr->sp = arr->dynarray_size - arr->padded_size;
             }
         }
     }
@@ -89,7 +102,7 @@ bool mig_dynarray_shrink(struct mig_dynarray *arr)
     return retval;
 }
 
-void mig_dynarray_init(struct mig_dynarray *arr, size_t usize, size_t alignment, unsigned int icount, enum mig_dynarray_initopts options)
+void mig_dynarray_init(struct mig_dynarray *arr, size_t size, size_t alignment, unsigned int icount, enum mig_dynarray_initopts options)
 {
     if((options & MIG_DYNARRAY_IGNORE_STRUCT) > 0)
     {
@@ -134,15 +147,14 @@ void mig_dynarray_init(struct mig_dynarray *arr, size_t usize, size_t alignment,
         alignment = (alnqr.quot + (alnqr.rem > 0 ? 1 : 0)) * alignof(void *);
     }
 
-    if(alignment < usize)
-    {
-        alignment += (alignment * (usize / alignment));
-    }
+    div_t szal = div(size, alignment);
+    size_t psize = (szal.quot + (szal.rem > 0 ? 1 : 0)) * alignment;
 
-    arr->minimum_size = icount * alignment;
+    arr->minimum_size = icount * psize;
     arr->alignment = alignment;
-    arr->unit_size = usize;
-    arr->sp = -((ptrdiff_t) alignment);
+    arr->actual_size = size;
+    arr->padded_size = psize;
+    arr->sp = -((ptrdiff_t) psize);
     arr->base = aligned_alloc(alignment, arr->minimum_size);
     arr->dynarray_size = arr->minimum_size;
 }
@@ -173,7 +185,7 @@ void mig_dynarray_setmode(struct mig_dynarray *arr, enum mig_dynarray_overflow_m
 bool mig_dynarray_pushref(struct mig_dynarray *arr, void **ref)
 {
     bool retval = false; /* Set this to false initially. */
-    arr->sp += arr->alignment;
+    arr->sp += arr->padded_size;
     if(arr->sp > 0 && arr->sp >= arr->dynarray_size)
     {
         //logMessage(LOG_DEBUG, "Overflow in dynarray (%p).", (void *) arr);
@@ -216,7 +228,7 @@ bool mig_dynarray_popref(struct mig_dynarray *arr, void **ref)
     else
     {
         *ref = (void *)(arr->base + arr->sp);
-        arr->sp -= arr->alignment;
+        arr->sp -= arr->padded_size;
     }
 
     return retval;
@@ -247,7 +259,7 @@ bool mig_dynarray_push(struct mig_dynarray *arr, const void *loc)
     /* If retval is true at this point, memory is availible.*/
     if(retval)
     {
-        memcpy(ptr, loc, arr->unit_size);
+        memcpy(ptr, loc, arr->actual_size);
     }
 
     return retval;
@@ -260,7 +272,7 @@ bool mig_dynarray_pop(struct mig_dynarray *arr, void *loc)
     
     if(retval)
     {
-        memcpy(loc, ptr, arr->unit_size);
+        memcpy(loc, ptr, arr->actual_size);
     }
 
     return retval;
@@ -272,20 +284,20 @@ bool mig_dynarray_peek(struct mig_dynarray *arr, void *loc)
     bool retval = mig_dynarray_peekref(arr, &ptr);;
     if(retval)
     {
-        memcpy(loc, ptr, arr->unit_size);
+        memcpy(loc, ptr, arr->actual_size);
     }
     return retval;
 }
 
 size_t mig_dynarray_len(struct mig_dynarray *arr)
 {
-    return (arr->sp / (ptrdiff_t) arr->alignment) + 1;
+    return (arr->sp / (ptrdiff_t) arr->padded_size) + 1;
 }
 
 bool mig_dynarray_indexref(struct mig_dynarray *arr, size_t idx, void **ref)
 {
     bool retval = true;
-    size_t offset = idx * arr->alignment;
+    size_t offset = idx * arr->padded_size;
     if(offset > arr->sp)
     {
         retval = false;
@@ -306,7 +318,7 @@ bool mig_dynarray_set(struct mig_dynarray *arr, size_t idx, const void *loc)
 
     if(retval)
     {
-        memcpy(ptr, loc, arr->unit_size);
+        memcpy(ptr, loc, arr->actual_size);
     }
 
     return retval;
@@ -319,7 +331,7 @@ bool mig_dynarray_get(struct mig_dynarray *arr, size_t idx, void *loc)
 
     if(retval)
     {
-        memcpy(loc, ptr, arr->unit_size);
+        memcpy(loc, ptr, arr->actual_size);
     }
 
     return retval;
@@ -333,8 +345,8 @@ bool mig_dynarray_to_array(struct mig_dynarray *arr, size_t *size, size_t *len, 
     bool retval = true;
     void *array;
 
-    arrsize = arr->sp + arr->alignment;
-    arrlen = arrsize / arr->alignment;
+    arrsize = arr->sp + arr->padded_size;
+    arrlen = arrsize / arr->padded_size;
 
     if(mem == NULL)
     {

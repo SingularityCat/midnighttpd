@@ -22,11 +22,12 @@ enum mig_dynarray_initopts {
 };
 
 struct mig_dynarray {
-    size_t alignment;
-    size_t unit_size;
-    size_t dynarray_size;
-    size_t chunk_multiplier;
-    size_t minimum_size;
+    size_t alignment;           /* Byte boundary to align items on. */
+    size_t actual_size;         /* Actual size of an item. */
+    size_t padded_size;         /* Padded size of an item. Equal to ceil(unit_size / alignment) * alignment. */
+    size_t dynarray_size;       /* Size in bytes of the memory allocated. */
+    size_t chunk_multiplier;    /* Dynarray will grow by this many items each time. */
+    size_t minimum_size;        /* Dynarray will not go below this many bytes. */
 
     enum mig_dynarray_overflow_mode overflow_mode;
 
