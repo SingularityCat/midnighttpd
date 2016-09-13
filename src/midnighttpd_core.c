@@ -192,13 +192,21 @@ void conn_intr(struct mig_loop *lp, size_t idx)
 
             /* Range checking logic:
              * Invalid range -> ignored.
-             * Lower bound higher then resource limit.
+             * Lower bound higher then resource limit -> 416.
+             * Valid range -> 206.
+             * Note: HTTP range requests are upper bound inclusive, i.e.
+             *   Range: bytes=0-0
+             * means the first byte.
              */
             if(rctx->range.low > rctx->range.high)
             {
                 rctx->range.spec = MHTTP_RANGE_SPEC_NONE;
             }
 
+            /* Turn inclusive bound into exclusive bound,
+             * such that\; high - low = length
+             */
+            rctx->range.high++;
             if(rctx->range.spec != MHTTP_RANGE_SPEC_NONE)
             {
                 if(rctx->range.high >= srcstat.st_size)
@@ -231,6 +239,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                         rctx->srclen,
                         rctx->range.low, rctx->range.high, (size_t) srcstat.st_size,
                         mimetype);
+                    /* continue */
                 }
             }
             else
@@ -244,6 +253,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                     "\r\n", mhttp_str_ver(rctx->version),
                     (size_t) srcstat.st_size,
                     mimetype);
+                /* continue */
             }
             if(rctx->method == MHTTP_METHOD_GET)
             {
