@@ -18,7 +18,7 @@
 #define http200 "200 OK"
 #define http204 "204 No content"
 #define http206 "206 Partial Content"
-#define http400 "400 Malformed Reqeuest"
+#define http400 "400 Malformed Request"
 #define http403 "403 Forbidden"
 #define http404 "404 Not Found"
 #define http405 "405 Method Not Allowed"
@@ -36,14 +36,16 @@ enum mhttp_version
     MHTTP_VERSION_1_1 = 11
 };
 
+/* Note: sizeof includes null byte. Remember this. */
+
 #define mhttp_str_ver(ver) \
     ((ver) == MHTTP_VERSION_1_1 ? http_v1_1 : http_v1_0)
 
 
 #define mhttp_send_ver(fd, ver) \
     ((ver) == MHTTP_VERSION_1_1 ? \
-        mig_unintr_write(fd, http_v1_1, sizeof(http_v1_1)) :\
-        mig_unintr_write(fd, http_v1_0, sizeof(http_v1_0)))
+        mig_unintr_write(fd, http_v1_1, sizeof(http_v1_1) - 1) :\
+        mig_unintr_write(fd, http_v1_0, sizeof(http_v1_0) - 1))
 
 
 #define mhttp_error_resp(error) \
@@ -56,6 +58,6 @@ enum mhttp_version
 #define mhttp_send_error(fd, ver, error) \
     mhttp_send_ver(fd, ver) + \
     mig_unintr_write(fd, mhttp_error_resp(error),\
-        sizeof(mhttp_error_resp(error)))
+        sizeof(mhttp_error_resp(error)) - 1)
 
 #endif

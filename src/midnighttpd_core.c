@@ -204,7 +204,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
             }
 
             /* Turn inclusive bound into exclusive bound,
-             * such that\; high - low = length
+             * such that, high - low = length
              */
             rctx->range.high++;
             if(rctx->range.spec != MHTTP_RANGE_SPEC_NONE)
@@ -237,7 +237,8 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                         "Content-Type: %s\r\n"
                         "\r\n", mhttp_str_ver(rctx->version),
                         rctx->srclen,
-                        rctx->range.low, rctx->range.high, (size_t) srcstat.st_size,
+                        /* range.high is exclusive, account for this. */
+                        rctx->range.low, rctx->range.high - 1, (size_t) srcstat.st_size,
                         mimetype);
                     /* continue */
                 }
