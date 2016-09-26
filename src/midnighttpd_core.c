@@ -209,7 +209,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
             rctx->range.high++;
             if(rctx->range.spec != MHTTP_RANGE_SPEC_NONE)
             {
-                if(rctx->range.high >= srcstat.st_size)
+                if(rctx->range.high > srcstat.st_size)
                 {
                     rctx->range.high = srcstat.st_size;
                 }
@@ -228,6 +228,17 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                 }
                 else
                 {
+                    /* Handle incomplete range specifications. */
+                    if((rctx->range.spec & MHTTP_RANGE_SPEC_LOW) == 0)
+                    {
+                        rctx->range.low = srcstat.st_size - rctx->range.high;
+                        rctx->range.high = srcstat.st_size;
+                    }
+                    else if((rctx->range.spec & MHTTP_RANGE_SPEC_HIGH) == 0)
+                    {
+                        rctx->range.high = srcstat.st_size;
+                    }
+
                     rctx->srclen = rctx->range.high - rctx->range.low;
                     dprintf(fd,
                         "%s " http206 "\r\n"
