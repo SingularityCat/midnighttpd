@@ -25,6 +25,7 @@
 #define LOOP_SLOTS          512
 #define RX_BUFLEN           4096
 #define TX_BUFLEN           4096
+#define EX_STRUCTLEN        0
 #define DIRINDEX_STATE      true
 #define DIRINDEX_BUFLEN     4096
 //#define DEFAULT_MIMETYPE    "application/octet-stream"
@@ -35,6 +36,7 @@ struct midnighttpd_config {
     size_t loop_slots;
     size_t rx_buflen;
     size_t tx_buflen;
+    size_t ex_structlen;
     bool dirindex_enabled;
     size_t dirindex_buflen;
 

@@ -21,6 +21,7 @@ struct midnighttpd_config config  = {
     LOOP_SLOTS,
     RX_BUFLEN,
     TX_BUFLEN,
+    EX_STRUCTLEN,
     DIRINDEX_STATE,
     DIRINDEX_BUFLEN,
     NULL,
@@ -137,8 +138,8 @@ int cfg_bind(struct mig_dynarray *stk, char *addr)
             aic = aic->ai_next;
             continue;
         }
-        ent.call = conn_accept;
-        ent.free = conn_close_listen_sock;
+        ent.call = listen_accept;
+        ent.free = listen_close_sock;
         ent.data = NULL;
         ent.fd = servsock;
         mig_dynarray_push(stk, &ent);
@@ -201,8 +202,8 @@ int cfg_bindunix(struct mig_dynarray *stk, char *opath)
         close(servsock);
         return -1;
     }
-    ent.call = conn_accept;
-    ent.free = conn_close_listen_sockunix;
+    ent.call = listen_accept;
+    ent.free = listen_close_sockunix;
     ent.data = realpath(opath, NULL);
     ent.fd = servsock;
     mig_dynarray_push(stk, &ent);

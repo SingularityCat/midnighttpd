@@ -23,7 +23,7 @@
 
 #include "midnighttpd_core.h"
 
-void conn_accept(struct mig_loop *lp, size_t idx)
+void listen_accept(struct mig_loop *lp, size_t idx)
 {
     int sock = accept(mig_loop_getfd(lp, idx), NULL, NULL);
     fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | O_NONBLOCK);
@@ -55,27 +55,28 @@ void conn_init(struct mig_loop *lp, size_t idx)
 {
     struct mhttp_req *rctx = mhttp_req_create(
         config.rx_buflen,
-        config.tx_buflen
+        config.tx_buflen,
+        config.ex_structlen
     );
     mhttp_req_reset(rctx);
     mig_loop_setdata(lp, idx, rctx);
-    mig_loop_setcall(lp, idx, conn_recv);
-    conn_recv(lp, idx);
+    mig_loop_setcall(lp, idx, req_recv_headers);
+    req_recv_headers(lp, idx);
 }
 
 
-void conn_recv(struct mig_loop *lp, size_t idx)
+void req_recv_headers(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
     size_t prevend = rctx->rxbuf.end;
 
-    size_t recvd = mig_buf_read(&rctx->rxbuf, fd, -1);
+    size_t recvd = mig_buf_write(&rctx->rxbuf, fd, -1);
     if(recvd == -1)
     {
         debug("[%zu] recv error: %s\n", idx, strerror(errno));
         rctx->eos = true;
-        req_terminate(lp, idx, rctx);
+        conn_terminate(lp, idx, rctx);
         return;
     }
 
@@ -84,7 +85,7 @@ void conn_recv(struct mig_loop *lp, size_t idx)
     {
         debug("[%zu] EOS before headers recv'd.\n", idx);
         rctx->eos = true;
-        req_terminate(lp, idx, rctx);
+        conn_terminate(lp, idx, rctx);
         return;
     }
 
@@ -92,7 +93,7 @@ void conn_recv(struct mig_loop *lp, size_t idx)
     {
         debug("[%zu] Headers complete.\n", idx);
         /* switch to intr */
-        mig_loop_setcall(lp, idx, conn_intr);
+        mig_loop_setcall(lp, idx, req_read_headers);
         mig_loop_setcond(lp, idx, MIG_COND_WRITE);
     }
     else if(mig_buf_isfull(&rctx->rxbuf))
@@ -100,11 +101,11 @@ void conn_recv(struct mig_loop *lp, size_t idx)
         /* Header too big. This is fatal. */
         mhttp_send_error(fd, rctx->version, http431);
         rctx->eos = true;
-        req_terminate(lp, idx, rctx);
+        conn_terminate(lp, idx, rctx);
     }
 }
 
-void conn_intr(struct mig_loop *lp, size_t idx)
+void req_read_headers(struct mig_loop *lp, size_t idx)
 {
     int srcfd, fd = mig_loop_getfd(lp, idx);
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
@@ -144,7 +145,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
         mimetype = config.default_mimetype;
     }
 
-    const char *allowed_methods = "GET,HEAD,OPTIONS";
+    const char *allowed_methods = "GET, HEAD, OPTIONS";
     switch(rctx->method)
     {
         case MHTTP_METHOD_GET:
@@ -181,7 +182,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                 /* Should we do directory listing? */
                 if(config.dirindex_enabled)
                 {
-                    conn_send_dirindex(fd, rctx);
+                    resp_send_dirindex(fd, rctx);
                 }
                 else
                 {
@@ -274,7 +275,7 @@ void conn_intr(struct mig_loop *lp, size_t idx)
                 {
                     lseek(srcfd, rctx->range.low, SEEK_SET);
                 }
-                mig_loop_setcall(lp, idx, conn_send_file);
+                mig_loop_setcall(lp, idx, resp_send_file);
                 return;
             }
             break;
@@ -308,11 +309,11 @@ void conn_intr(struct mig_loop *lp, size_t idx)
     mhttp_send_error(fd, rctx->version, http400);
     rctx->eos = true;
     terminate:
-    req_terminate(lp, idx, rctx);
+    conn_terminate(lp, idx, rctx);
     return;
 }
 
-void conn_send_file(struct mig_loop *lp, size_t idx)
+void resp_send_file(struct mig_loop *lp, size_t idx)
 {
     int fd = mig_loop_getfd(lp, idx);
     struct mhttp_req *rctx = mig_loop_getdata(lp, idx);
@@ -322,7 +323,7 @@ void conn_send_file(struct mig_loop *lp, size_t idx)
     if(mig_buf_isempty(&rctx->txbuf))
     {
         mig_buf_empty(&rctx->txbuf);
-        sent = mig_buf_read(&rctx->txbuf, rctx->srcfd, rctx->srclen); /* Sent here means amount read. */
+        sent = mig_buf_write(&rctx->txbuf, rctx->srcfd, rctx->srclen); /* Sent here means amount read. */
         if(sent == -1) { goto io_error; }
         else if(sent == 0 && rctx->srclen > 0)
         {
@@ -332,24 +333,25 @@ void conn_send_file(struct mig_loop *lp, size_t idx)
         rctx->srclen -= sent;
     }
 
-    sent = mig_buf_write(&rctx->txbuf, fd, -1);
+    sent = mig_buf_read(&rctx->txbuf, fd, -1);
     if(sent == -1) { goto io_error; }
 
     if(rctx->srclen == 0)
     {
         close(rctx->srcfd);
-        req_terminate(lp, idx, rctx);
+        conn_terminate(lp, idx, rctx);
     }
     return;
 
-    /* Reached if there's an IO error. mhttp_req_free function will close srcfd. */
+    /* Reached if there's an IO error. */
     io_error:
+    close(rctx->srcfd);
     rctx->eos = true;
-    req_terminate(lp, idx, rctx);
+    conn_terminate(lp, idx, rctx);
 }
 
 
-void req_terminate(struct mig_loop *lp, size_t idx, struct mhttp_req *req)
+void conn_terminate(struct mig_loop *lp, size_t idx, struct mhttp_req *req)
 {
     printf("[%zu] %s %s %s (%s)\n", idx, mhttp_str_ver(req->version), mhttp_str_method(req->method), req->path, req->args);
 
@@ -367,19 +369,19 @@ void req_terminate(struct mig_loop *lp, size_t idx, struct mhttp_req *req)
     /* Check if there's a complete request queued up. */
     if(mhttp_req_check(req, 0))
     {
-        mig_loop_setcall(lp, idx, conn_intr);
+        mig_loop_setcall(lp, idx, req_recv_headers);
         mig_loop_setcond(lp, idx, MIG_COND_WRITE);
 
     }
     else
     {
-        mig_loop_setcall(lp, idx, conn_recv);
+        mig_loop_setcall(lp, idx, req_recv_headers);
         mig_loop_setcond(lp, idx, MIG_COND_READ);
     }
 }
 
 
-void conn_send_dirindex(int fd, struct mhttp_req *rctx)
+void resp_send_dirindex(int fd, struct mhttp_req *rctx)
 {
     const size_t buflen = config.dirindex_buflen;
     char buf[buflen];
@@ -423,12 +425,12 @@ void conn_send_dirindex(int fd, struct mhttp_req *rctx)
     mhttp_send_error(fd, rctx->version, http500);
 }
 
-void conn_close_listen_sock(struct mig_loop *lp, size_t idx)
+void listen_close_sock(struct mig_loop *lp, size_t idx)
 {
     close(mig_loop_getfd(lp, idx));
 }
 
-void conn_close_listen_sockunix(struct mig_loop *lp, size_t idx)
+void listen_close_sockunix(struct mig_loop *lp, size_t idx)
 {
     char *path = mig_loop_getdata(lp, idx);
     close(mig_loop_getfd(lp, idx));

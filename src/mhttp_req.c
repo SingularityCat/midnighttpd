@@ -21,16 +21,10 @@
  *     size_t srclen;
  * };
  */
-struct mhttp_req *mhttp_req_create(size_t rxlen, size_t txlen);
-void mhttp_req_destroy(struct mhttp_req *req);
 
-void mhttp_req_reset(struct mhttp_req *req);
-bool mhttp_req_check(struct mhttp_req *req, size_t offset);
-bool mhttp_req_parse(struct mhttp_req *req);
-
-struct mhttp_req *mhttp_req_create(size_t rxlen, size_t txlen)
+struct mhttp_req *mhttp_req_create(size_t rxlen, size_t txlen, size_t exlen)
 {
-    struct mhttp_req *req = malloc(sizeof(struct mhttp_req) + rxlen + txlen + 1);
+    struct mhttp_req *req = malloc(sizeof(struct mhttp_req) + rxlen + txlen + 1 + exlen);
     req->rxbuf.base = (char *) (req + 1);
     req->rxbuf.len = rxlen;
     req->txbuf.base = req->rxbuf.base + req->rxbuf.len;
@@ -42,16 +36,13 @@ struct mhttp_req *mhttp_req_create(size_t rxlen, size_t txlen)
     mhttp_req_reset(req);
     /* A single null byte to cap the buffers. */
     *(req->txbuf.base + req->txbuf.len) = 0;
+    req->ext = (void*) (req->txbuf.base + req->txbuf.len + 1);
     return req;
 }
 
 
 void mhttp_req_destroy(struct mhttp_req *req)
 {
-    if(req->srcfd != -1)
-    {
-        close(req->srcfd);
-    }
     free(req);
 }
 

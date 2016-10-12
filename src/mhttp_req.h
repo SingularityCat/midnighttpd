@@ -31,11 +31,13 @@ struct mhttp_req
     enum mhttp_req_txenc txenc;
     size_t entlen;
     bool eos;
+    void *ext;
+
     int srcfd;
     size_t srclen;
 };
 
-struct mhttp_req *mhttp_req_create(size_t rxlen, size_t txlen);
+struct mhttp_req *mhttp_req_create(size_t rxlen, size_t txlen, size_t exlen);
 void mhttp_req_destroy(struct mhttp_req *req);
 
 void mhttp_req_reset(struct mhttp_req *req);

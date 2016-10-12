@@ -12,16 +12,18 @@
     #define debug(fmt, ...)
 #endif
 
-void conn_accept(struct mig_loop *lp, size_t idx);
+void listen_accept(struct mig_loop *lp, size_t idx);
 void conn_free(struct mig_loop *lp, size_t idx);
 void conn_init(struct mig_loop *lp, size_t idx);
-void conn_recv(struct mig_loop *lp, size_t idx);
-void conn_intr(struct mig_loop *lp, size_t idx);
-void conn_send_file(struct mig_loop *lp, size_t idx);
-void req_terminate(struct mig_loop *lp, size_t idx, struct mhttp_req *req);
-void conn_send_dirindex(int fd, struct mhttp_req *rctx);
 
-void conn_close_listen_sock(struct mig_loop *lp, size_t idx);
-void conn_close_listen_sockunix(struct mig_loop *lp, size_t idx);
+void req_recv_headers(struct mig_loop *lp, size_t idx);
+void req_read_headers(struct mig_loop *lp, size_t idx);
+
+void resp_send_file(struct mig_loop *lp, size_t idx);
+void resp_send_dirindex(int fd, struct mhttp_req *rctx);
+void conn_terminate(struct mig_loop *lp, size_t idx, struct mhttp_req *req);
+
+void listen_close_sock(struct mig_loop *lp, size_t idx);
+void listen_close_sockunix(struct mig_loop *lp, size_t idx);
 
 #endif

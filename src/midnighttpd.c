@@ -54,6 +54,7 @@ int main(int argc, char **argv)
     const char *usage = 
         "midnighttpd - http daemon\n"
         "usage:\n"
+        " midnighttpd [options] [document root]"
         " -c configuration\n"
         "       Load configuration from a file.\n"
         " -m mimetype [extension ...]\n"
