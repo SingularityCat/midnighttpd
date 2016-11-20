@@ -1,5 +1,13 @@
 #include "mig_core.h"
 
+static bool mig_callchain_sentinel(struct mig_loop *loop, size_t idx)
+{
+    mig_loop_unregister(loop, idx);
+    return false;
+}
+
+const mig_chainfunc MIG_CALLCHAIN_SENTINEL = mig_callchain_sentinel;
+
 static const struct mig_ent MIG_ENT_EMPTY = {
     NULL,
     NULL,
@@ -51,6 +59,7 @@ size_t mig_loop_register(struct mig_loop *loop, int fd, mig_callback callfp, mig
     if(mig_zstk_pop(loop->freestk, &idx))
     {
         loop->entarr[idx].fd = fd;
+        loop->entarr[idx].calltype = MIG_CALLTYPE_CALLBACK;
         loop->entarr[idx].call = callfp;
         loop->entarr[idx].free = freefp;
         loop->entarr[idx].data = dptr;
@@ -61,6 +70,22 @@ size_t mig_loop_register(struct mig_loop *loop, int fd, mig_callback callfp, mig
     return idx;
 }
 
+size_t mig_loop_register_chain(struct mig_loop *loop, int fd, const mig_chainfunc *chain, mig_callback freefp, enum mig_cond cond, void *dptr)
+{
+    size_t idx = -1;
+    if(mig_zstk_pop(loop->freestk, &idx))
+    {
+        loop->entarr[idx].fd = fd;
+        loop->entarr[idx].calltype = MIG_CALLTYPE_CALLCHAIN;
+        loop->entarr[idx].callchain = chain;
+        loop->entarr[idx].free = freefp;
+        loop->entarr[idx].data = dptr;
+        loop->entfds[idx].fd = fd;
+        loop->entfds[idx].events = cond;
+        loop->entfds[idx].revents = 0;
+    }
+    return idx;
+}
 
 void mig_loop_unregister(struct mig_loop *loop, size_t idx)
 {
@@ -85,6 +110,7 @@ int mig_loop_exec(struct mig_loop *loop)
     int hfds, rfds;
     size_t idx;
     struct pollfd *curfdp;
+    struct mig_ent *curent;
     while(!loop->terminate)
     {
         if(mig_zstk_isfull(loop->freestk))
@@ -106,7 +132,20 @@ int mig_loop_exec(struct mig_loop *loop)
             if((curfdp->events & curfdp->revents) > 0)
             {
                 hfds++;
-                loop->entarr[idx].call(loop, idx);
+                curent = loop->entarr + idx;
+                switch(curent->calltype)
+                {
+                    case MIG_CALLTYPE_CALLBACK:
+                        curent->call(loop, idx);
+                        break;
+                    case MIG_CALLTYPE_CALLCHAIN:
+                        if((*curent->callchain)(loop, idx))
+                        {
+                            /* Move to next function only if we're still a callchain */
+                            curent->calltype == MIG_CALLTYPE_CALLCHAIN && curent->callchain++;
+                        }
+                        break;
+                }
             }
         }
     }
@@ -167,12 +206,34 @@ extern inline void mig_loop_setdata(struct mig_loop *loop, size_t idx, void *dat
     loop->entarr[idx].data = data;
 }
 
-extern inline void mig_loop_setcall(struct mig_loop *loop, size_t idx, mig_callback fp)
-{
-    loop->entarr[idx].call = fp;
-}
-
 extern inline void mig_loop_setfree(struct mig_loop *loop, size_t idx, mig_callback fp)
 {
     loop->entarr[idx].free = fp;
 }
+
+extern inline void mig_loop_setcall(struct mig_loop *loop, size_t idx, mig_callback fp)
+{
+    if(fp)
+    {
+        loop->entarr[idx].calltype = MIG_CALLTYPE_CALLBACK;
+        loop->entarr[idx].call = fp;
+    }
+    else
+    {
+        loop->entarr[idx].calltype = MIG_CALLTYPE_NULL;
+    }
+}
+
+extern inline void mig_loop_setcallchain(struct mig_loop *loop, size_t idx, const mig_chainfunc *chain)
+{
+    if(chain)
+    {
+        loop->entarr[idx].calltype = MIG_CALLTYPE_CALLCHAIN;
+        loop->entarr[idx].callchain = chain;
+    }
+    else
+    {
+        loop->entarr[idx].calltype = MIG_CALLTYPE_NULL;
+    }
+}
+

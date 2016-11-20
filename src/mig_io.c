@@ -50,3 +50,4 @@ int mig_buf_loadfile(struct mig_buf *buf, const char *path)
     buf->end += r;
     return 0;
 }
+
